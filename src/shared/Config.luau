@@ -31,6 +31,9 @@ Config.StatStart = 50
 Config.StartingCoins = 100 -- meta currency (shop), persists across lives
 Config.StartingMoney = 0 -- in-life money, resets every new life
 
+-- ===== Life simulation =====
+Config.EventChance = 0.28 -- chance of a random life event after each decision
+
 -- ===== Networking =====
 -- Default token-bucket limits for remotes (requests per second, burst size).
 Config.DefaultRateLimit = { Rate = 4, Burst = 8 }

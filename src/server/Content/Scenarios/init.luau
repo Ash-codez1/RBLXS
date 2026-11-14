@@ -22,6 +22,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local StatDefinitions = require(Shared.Data.StatDefinitions)
 local Traits = require(Shared.Data.Traits)
+local Careers = require(Shared.Data.Careers)
+local Assets = require(Shared.Data.Assets)
 
 local Scenarios = {}
 Scenarios.All = {}
@@ -33,7 +35,7 @@ local function issue(text)
 	warn("[Scenarios] " .. text)
 end
 
-local function validateEffects(where, effects)
+local function validateEffects(where, effects, requires)
 	if type(effects) ~= "table" then
 		issue(where .. ": missing Effects")
 		return
@@ -53,6 +55,27 @@ local function validateEffects(where, effects)
 				issue(label .. ": unknown trait " .. tostring(trait))
 			end
 		end
+		if block.Career ~= nil and not Careers.IsValid(block.Career) then
+			issue(label .. ": unknown career " .. tostring(block.Career))
+		end
+		if block.Education ~= nil and not Careers.EducationRank[block.Education] then
+			issue(label .. ": unknown education " .. tostring(block.Education))
+		end
+		for _, list in ipairs({ block.Assets or {}, block.RemoveAssets or {} }) do
+			for _, id in ipairs(list) do
+				if not Assets.IsValid(id) then
+					issue(label .. ": unknown asset " .. tostring(id))
+				end
+			end
+		end
+		-- Big purchases ($10k+) must be gated by MinMoney so nothing is ever "free".
+		-- Smaller costs may floor at $0 (you can always scrape together a wedding).
+		if type(block.Money) == "number" and block.Money <= -10000 then
+			local min = requires and requires.MinMoney or 0
+			if min < -block.Money then
+				issue(label .. (": spends %d but Requires.MinMoney is %d"):format(-block.Money, min))
+			end
+		end
 	end
 	checkBlock(where, effects)
 	local total = 0
@@ -66,6 +89,32 @@ local function validateEffects(where, effects)
 	end
 	if total > 1.0001 then
 		issue(where .. ": outcome chances add up to more than 1")
+	end
+end
+Scenarios.ValidateEffects = validateEffects
+
+local function validateRequires(where, requires)
+	if not requires then
+		return
+	end
+	for _, key in ipairs({ "Careers", "NotCareers" }) do
+		for _, id in ipairs(requires[key] or {}) do
+			if not Careers.IsValid(id) then
+				issue(where .. ": unknown career in Requires." .. key .. ": " .. tostring(id))
+			end
+		end
+	end
+	for _, key in ipairs({ "MinEducation", "MaxEducation" }) do
+		if requires[key] and not Careers.EducationRank[requires[key]] then
+			issue(where .. ": unknown education in Requires." .. key)
+		end
+	end
+	for _, key in ipairs({ "MinStats", "MaxStats" }) do
+		for stat in pairs(requires[key] or {}) do
+			if not StatDefinitions.IsValid(stat) then
+				issue(where .. ": unknown stat in Requires." .. key .. ": " .. tostring(stat))
+			end
+		end
 	end
 end
 
@@ -87,6 +136,7 @@ function Scenarios.Register(list)
 		if #choices < 3 or #choices > 5 then
 			issue(id .. ": should have 3–5 choices (has " .. #choices .. ")")
 		end
+		validateRequires(id, scenario.Requires)
 		local unlocked = 0
 		local seen = {}
 		scenario.ChoiceById = {}
@@ -102,10 +152,13 @@ function Scenarios.Register(list)
 			if not choice.Requires then
 				unlocked += 1
 			end
-			validateEffects(id .. "." .. tostring(choice.Id), choice.Effects)
+			validateRequires(id .. "." .. tostring(choice.Id), choice.Requires)
+			local scenarioMin = scenario.Requires and scenario.Requires.MinMoney or 0
+			local choiceMin = choice.Requires and choice.Requires.MinMoney or 0
+			validateEffects(id .. "." .. tostring(choice.Id), choice.Effects, { MinMoney = math.max(scenarioMin, choiceMin) })
 		end
-		if unlocked < 2 then
-			issue(id .. ": needs at least 2 always-available choices")
+		if unlocked < 1 then
+			issue(id .. ": needs at least 1 always-available choice")
 		end
 		Scenarios.ById[id] = scenario
 		table.insert(Scenarios.All, scenario)
@@ -122,6 +175,31 @@ for _, module in ipairs(children) do
 		Scenarios.Register(require(module))
 	end
 end
+
+-- ===== Random events =====
+Scenarios.Events = {}
+Scenarios.EventById = {}
+local RARITIES = { Common = true, Uncommon = true, Rare = true, Legendary = true }
+function Scenarios.RegisterEvents(list)
+	for _, event in ipairs(list) do
+		local id = event.Id
+		if type(id) ~= "string" or Scenarios.EventById[id] or Scenarios.ById[id] then
+			issue("invalid or duplicate event Id " .. tostring(id))
+			continue
+		end
+		if not RARITIES[event.Rarity] then
+			issue(id .. ": unknown rarity " .. tostring(event.Rarity))
+		end
+		if type(event.Stages) ~= "table" or #event.Stages == 0 then
+			issue(id .. ": needs Stages")
+		end
+		validateRequires(id, event.Requires)
+		validateEffects(id, event.Effects, { MinMoney = math.huge }) -- events may cost money
+		Scenarios.EventById[id] = event
+		table.insert(Scenarios.Events, event)
+	end
+end
+Scenarios.RegisterEvents(require(script.Parent:WaitForChild("Events")))
 
 function Scenarios.CountForStage(stage: number): number
 	local n = 0

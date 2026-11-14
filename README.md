@@ -10,9 +10,8 @@ Built in Luau as a [Rojo](https://rojo.space) project, so every script is a plai
 |---|---|---|
 | 1 | Architecture: bootstrap, networking, saving, stats, settings | ✅ Done |
 | 2 | Main menu, HUD, decision UI, settings, responsive layout (PC / mobile / tablet / console) | ✅ Done |
-| 2+ | Playable slice: save slots, new/continue/delete life, full **Childhood** stage (11 scenarios) | ✅ Done |
-| 3 | Remaining five life stages, random events, deeper branching | ⏳ Next |
-| 4 | Careers, relationships, finances | ⬜ |
+| 3 | All six life stages (85 scenarios), 34 random events, branching, consequences, yearly income & ageing | ✅ Done |
+| 4 | Careers & relationships in depth (career events, promotions, partner/children interactions, finances) | ⏳ Next. Foundations already in: 21 careers with salaries and 5 levels, marriage/children, homes and cars |
 | 5 | Life Reveal: predictions, probabilities, cinematics, final reveal, Life History | ⬜ |
 | 6 | Multiplayer: shared scenarios, group voting, comparisons | ⬜ |
 | 7 | Shop, currency, inventory, monetisation | ⬜ |
@@ -20,7 +19,39 @@ Built in Luau as a [Rojo](https://rojo.space) project, so every script is a plai
 | 9 | Achievements, daily rewards, challenges, leaderboards | ⬜ |
 | 10–11 | Security hardening, testing, polish | ⬜ (core saving/security done in Phase 1) |
 
-**72 automated tests pass** (`lune run tests/run.luau`), including a full click-through of the UI on desktop, phone portrait, phone landscape and gamepad. Nothing has been play-tested inside Roblox Studio yet; see §4.
+**78 automated tests pass** (`lune run tests/run.luau`). They include:
+- a simulation of 400 random lives from age 5 to 85;
+- a full life played through the real UI;
+- UI click-throughs on desktop, phone portrait, phone landscape and gamepad.
+
+Nothing has been play-tested inside Roblox Studio yet; see §4.
+
+### What a life looks like now
+
+| Stage | Ages | Decisions | Scenarios | Highlights |
+|---|---|---|---|---|
+| Childhood | 5–12 | 6 | 11 | first friends, clubs, hidden talents, pocket money |
+| Teenage Years | 13–18 | 7 | 14 | friend groups, exams, first job, crushes, going viral, subjects, university plans |
+| Young Adulthood | 19–25 | 7 | 17 | university or work or travel, graduation, **career choice** (professional, creative, business or service), moving out, love |
+| Adulthood | 26–40 | 7 | 18 | promotions, marriage, children, buying homes, investing, career crossroads, job-specific dramas, **astronaut** |
+| Middle Age | 41–60 | 6 | 15 | running a business, raising teens, old regrets, dreams, health, wealth, divorce or late love |
+| Retirement | 61–85 | 5 | 10 | retiring (or not), grandchildren, giving back, legacy, looking back |
+
+Between decisions, years pass:
+- Salaries are paid, with a savings rate that the Thrifty trait raises.
+- Rent is due until you own a home.
+- Children cost money while they're young.
+- Pensions are based on your career peak.
+- Strong performers can be promoted automatically.
+- Health declines after 50.
+
+After each decision there is a 28% chance of a **random life event**. There are 34 of them, rated Common, Uncommon, Rare or Legendary, and each is gated by your real situation: you can only be laid off if you have a job, and twins need a marriage. Legendary events, like a lottery win or a call from the space agency, happen in only a small fraction of lives.
+
+Results from the 400-life simulation with random choices:
+- 84 of 85 scenarios and 33 of 34 events appeared. The exception is the astronaut path, which needs a legendary event.
+- 19 different careers were reached.
+- Saves stay under 10 KB.
+- About 48% of lives ended owning a home and 12% as millionaires.
 
 ---
 
@@ -31,6 +62,8 @@ ReplicatedStorage
 └─ Shared                              Folder
    ├─ Config                           ModuleScript   constants, credits, loading tips
    ├─ Data                             Folder
+   │  ├─ Assets                        ModuleScript   homes/cars you can buy in a life
+   │  ├─ Careers                       ModuleScript   21 careers, salaries, level titles, education
    │  ├─ DataTemplate                  ModuleScript   save schema, new life, migrations
    │  ├─ LifeStages                    ModuleScript   6 stages, ages, decisions per stage
    │  ├─ NamePool                      ModuleScript   names for the "Random" button
@@ -46,11 +79,13 @@ ServerScriptService
 └─ Server                              Folder
    ├─ Main                             Script         (Main.server.luau)
    ├─ Content                          Folder
-   │  └─ Scenarios                     ModuleScript   (Scenarios/init.luau) loads + validates
-   │     └─ Childhood                  ModuleScript   stage 1 scenarios
+   │  ├─ Events                        ModuleScript   34 random life events
+   │  └─ Scenarios                     ModuleScript   (Scenarios/init.luau) loads + validates everything
+   │     ├─ Childhood, Teen, YoungAdult,
+   │     │  Adult, MiddleAge, Retirement  ModuleScripts  one per life stage
    ├─ Lib                              Folder
-   │  ├─ Conditions, Consequences, MockDataStore,
-   │  │  ScenarioPicker, SessionLock, Validate        ModuleScripts
+   │  ├─ Conditions, Consequences, MockDataStore, RandomEvents,
+   │  │  ScenarioPicker, SessionLock, Validate, Yearly ModuleScripts
    └─ Services                         Folder
       ├─ DataService, LifeService, SettingsService, StatService   ModuleScripts
 
@@ -104,8 +139,18 @@ File naming (Rojo): `X.server.luau` → **Script**, `X.client.luau` → **LocalS
    - **Short term:** stat changes, with diminishing returns near 0 and 100 and trait multipliers on gains.
    - **Long term:** flags (which unlock or close off later scenarios and choices) and traits (which make related gains worth more later).
    - It also updates money, the story log and the decision log.
-5. Chance rolls use a per-life server seed plus the decision count, so leaving and rejoining can't reroll a bad outcome.
-6. After the last decision of a stage, the stats are snapshotted into `life.Reveals` and `StageCompleted` fires. This is where Life Reveal plugs in during Phase 5.
+5. **Years pass** (`Lib/Yearly`): income, rent, children's costs, pension, career years, automatic promotions and ageing.
+6. **Random events** (`Lib/RandomEvents`) may then fire. The outcome card shows what changed, and an event card follows if one happened.
+7. Chance rolls use a per-life server seed plus the decision count, so leaving and rejoining can't reroll a bad outcome.
+8. After the last decision of a stage, the stats are snapshotted into `life.Reveals` and `StageCompleted` fires. This is where Life Reveal plugs in during Phase 5.
+
+**Branching between stages.** Choices set *flags* (Athlete, MusicTalent, PlanUni, Cheater…) and *traits* (Studious, Kind…). Later scenarios and choices use `Requires` to test flags, traits, stats, money, career, education, relationship status, children and assets. Examples:
+- A childhood swimmer can beat the bully in a race.
+- A teen who started a channel gets the brand deal at 22.
+- A childhood chess player can win the senior championship at 75.
+- A science grad can be invited to train as an astronaut.
+
+**Content validation.** At startup, `Content/Scenarios` checks every scenario and event: unique ids, 3–5 choices, valid stats, traits, careers, education and assets, and outcome chances that add up to 1 or less. It also checks that every purchase of $10,000 or more is guarded by a `MinMoney` requirement. Any problem prints a warning in Output, and the test suite fails on it.
 
 **Responsive UI.** Every screen is laid out in virtual pixels on a 1280×720, 960×540 (phone landscape) or 540×960 (portrait) canvas, then scaled with `UIScale` to fill the safe area. Below 900 virtual pixels wide, layouts stack: the decision cards become a list, the HUD uses two rows and the menu becomes one column. Screens rebuild live when the device rotates or the UI-scale setting changes. All controls are buttons, so touch, mouse and gamepad all work. Sliders also have −/+ buttons.
 

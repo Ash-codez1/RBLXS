@@ -41,6 +41,8 @@ local Validate = require(Server.Lib.Validate)
 local Conditions = require(Server.Lib.Conditions)
 local Consequences = require(Server.Lib.Consequences)
 local ScenarioPicker = require(Server.Lib.ScenarioPicker)
+local RandomEvents = require(Server.Lib.RandomEvents)
+local Yearly = require(Server.Lib.Yearly)
 local Scenarios = require(Server.Content.Scenarios)
 
 local DataService = require(script.Parent.DataService)
@@ -100,7 +102,7 @@ function LifeService.ToClient(scenario, life)
 	local choices = {}
 	for index, choice in ipairs(scenario.Choices) do
 		local unlocked = Conditions.Check(life, choice.Requires)
-		local preview, moneyDir, risky = Consequences.Preview(choice.Effects)
+		local preview, moneyDir, risky, tags = Consequences.Preview(choice.Effects)
 		table.insert(choices, {
 			Id = choice.Id,
 			Index = index,
@@ -112,6 +114,7 @@ function LifeService.ToClient(scenario, life)
 			Preview = if choice.Mystery then {} else preview,
 			MoneyDir = if choice.Mystery then 0 else moneyDir,
 			Risky = risky,
+			Tags = if choice.Mystery or not unlocked then {} else tags,
 		})
 	end
 	local stage = LifeStages.Get(life.Stage)
@@ -254,41 +257,85 @@ function LifeService.MakeChoice(player: Player, scenarioArg: any, choiceArg: any
 	DataService.Update(player, function(d)
 		local l = activeLife(d)
 		local prevAge, prevStage = l.Age, l.Stage
-		local summary = Consequences.Apply(l, choice.Effects, rngFor(l, 2))
+		local wealthStart = l.Stats.Wealth
 
+		-- 1. The choice itself.
+		local summary = Consequences.Apply(l, choice.Effects, rngFor(l, 2))
 		table.insert(l.Decisions, { S = scenarioId, C = choiceId, Age = prevAge, Stage = prevStage })
 		l.Seen[scenarioId] = true
 		l.CurrentScenario = false
 		l.ScenarioIndex += 1
 		d.Lifetime.DecisionsMade += 1
 
+		-- 2. Time passes: ageing, income, career years.
 		local stage = LifeStages.Get(l.Stage)
-		l.Age = LifeStages.AgeAfterScenario(l.Stage, l.ScenarioIndex)
+		local newAge = LifeStages.AgeAfterScenario(l.Stage, l.ScenarioIndex)
 		if l.ScenarioIndex >= stage.ScenariosPerStage then
 			stageCompleted = l.Stage
+			if l.Stage < LifeStages.Count then
+				newAge = LifeStages.Get(l.Stage + 1).MinAge
+			end
+		end
+		local years = math.max(0, newAge - prevAge)
+		local yearly = Yearly.Advance(l, prevAge, years, rngFor(l, 5), summary)
+		l.Age = newAge
+
+		-- 3. Maybe something unexpected happens.
+		local eventPayload = nil
+		local event = RandomEvents.Roll(l, Scenarios.Events, rngFor(l, 3))
+		if event then
+			local eventSummary = Consequences.Apply(l, event.Effects, rngFor(l, 4))
+			table.insert(l.Events, event.Id)
+			if event.Rarity == "Rare" or event.Rarity == "Legendary" then
+				d.Lifetime.RareEventsSeen += 1
+			end
+			eventSummary.Applied.Wealth = nil
+			eventPayload = {
+				Id = event.Id,
+				Title = event.Title,
+				Icon = event.Icon,
+				Rarity = event.Rarity,
+				Story = eventSummary.Story,
+				Applied = eventSummary.Applied,
+				MoneyDelta = eventSummary.MoneyDelta,
+				TraitsGained = eventSummary.TraitsGained,
+				LifeChanges = eventSummary.LifeChanges,
+				Lucky = eventSummary.OutcomeTriggered,
+			}
+		end
+
+		-- 4. Stage bookkeeping.
+		if stageCompleted then
 			-- Snapshot for Life Reveal (Phase 5 adds predictions to this record).
-			table.insert(l.Reveals, { Stage = l.Stage, Age = l.Age, Stats = table.clone(l.Stats), Money = l.Money, Time = os.time() })
+			table.insert(l.Reveals, { Stage = stageCompleted, Age = l.Age, Stats = table.clone(l.Stats), Money = l.Money, Time = os.time() })
 			if l.Stage < LifeStages.Count then
 				l.Stage += 1
 				l.ScenarioIndex = 0
-				l.Age = LifeStages.Get(l.Stage).MinAge
 			else
 				l.Completed = true
 				lifeCompleted = true
 				d.Lifetime.LivesCompleted += 1
 			end
 		end
-		d.Lifetime.HighestNetWorth = math.max(d.Lifetime.HighestNetWorth, l.Money)
+
+		Consequences.SyncWealth(l)
+		local wealthChange = l.Stats.Wealth - wealthStart
+		summary.Applied.Wealth = if math.abs(wealthChange) >= 0.05 then wealthChange else nil
+		d.Lifetime.HighestNetWorth = math.max(d.Lifetime.HighestNetWorth, Consequences.NetWorth(l))
 
 		outcome = {
 			ScenarioId = scenarioId,
 			ChoiceId = choiceId,
 			Story = summary.Story,
 			Applied = summary.Applied,
-			MoneyDelta = summary.MoneyDelta,
+			MoneyDelta = summary.MoneyDelta - yearly.Income,
+			Income = yearly.Income,
+			Years = yearly.Years,
 			Money = l.Money,
 			Lucky = summary.OutcomeTriggered,
 			TraitsGained = summary.TraitsGained,
+			LifeChanges = summary.LifeChanges,
+			Event = eventPayload,
 			PrevAge = prevAge,
 			Age = l.Age,
 			PrevStage = prevStage,

@@ -17,6 +17,7 @@ local StatDefinitions = require(Shared.Data.StatDefinitions)
 local DataTemplate = require(Shared.Data.DataTemplate)
 local NamePool = require(Shared.Data.NamePool)
 local Format = require(Shared.Util.Format)
+local Careers = require(Shared.Data.Careers)
 
 local UILib = script.Parent.Parent:WaitForChild("UILib")
 local Theme = require(UILib.Theme)
@@ -54,7 +55,11 @@ local function lifeSummary(life): string
 		return "✅ Life complete · Age " .. life.Age
 	end
 	local stage = LifeStages.Get(life.Stage)
-	return ("Age %d · %s"):format(life.Age, stage.DisplayName)
+	local text = ("Age %d · %s"):format(life.Age, stage.DisplayName)
+	if life.Career and life.Career.Id ~= "None" and Careers.Info[life.Career.Id] then
+		text ..= " · " .. Careers.TitleAt(life.Career.Id, life.Career.Level)
+	end
+	return text
 end
 
 local function statLine(life): string

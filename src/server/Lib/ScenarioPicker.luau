@@ -16,9 +16,15 @@ local Conditions = require(script.Parent.Conditions)
 
 local ScenarioPicker = {}
 
-local function weightFor(scenario, life): number
-	local weight = scenario.Weight or 1
-	local boost = scenario.Boost
+--[[
+	Weight for a scenario or random event:
+	  base × Boost.Flags[flag] (if set) × Boost.Traits (scaled by strength)
+	       × Boost.Stats[stat].Multiplier (if stat ≥ Min, or ≤ Max)
+	Seen repeatable scenarios are down-weighted.
+]]
+function ScenarioPicker.Weight(entry, life, base: number): number
+	local weight = base
+	local boost = entry.Boost
 	if boost then
 		if boost.Flags then
 			for flag, multiplier in pairs(boost.Flags) do
@@ -35,11 +41,23 @@ local function weightFor(scenario, life): number
 				end
 			end
 		end
+		if boost.Stats then
+			for stat, rule in pairs(boost.Stats) do
+				local value = life.Stats[stat] or 0
+				if (rule.Min and value >= rule.Min) or (rule.Max and value <= rule.Max) then
+					weight *= rule.Multiplier
+				end
+			end
+		end
 	end
-	if life.Seen[scenario.Id] then
-		weight *= 0.25 -- repeatable but already seen: less likely
+	if life.Seen[entry.Id] then
+		weight *= 0.25
 	end
 	return weight
+end
+
+local function weightFor(scenario, life): number
+	return ScenarioPicker.Weight(scenario, life, scenario.Weight or 1)
 end
 
 function ScenarioPicker.Eligible(life, pool)

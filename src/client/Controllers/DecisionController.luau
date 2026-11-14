@@ -23,6 +23,8 @@ local Format = require(Shared.Util.Format)
 local LifeStages = require(Shared.Data.LifeStages)
 local StatDefinitions = require(Shared.Data.StatDefinitions)
 local Traits = require(Shared.Data.Traits)
+local Careers = require(Shared.Data.Careers)
+local StatMath = require(Shared.Util.StatMath)
 
 local UILib = script.Parent.Parent:WaitForChild("UILib")
 local Theme = require(UILib.Theme)
@@ -45,11 +47,27 @@ local mode = "Idle" -- Idle | Loading | Scenario | Outcome | Transition | Messag
 local scenario = nil
 local selected = nil
 local outcome = nil
+local pendingEvent = nil -- event waiting to be shown after the outcome
+local shownEvent = nil -- event card currently on screen
 local busy = false
 local cards: { [string]: TextButton } = {}
 local confirmBar: Frame? = nil
 local continueButton: GuiButton? = nil
 local requestToken = 0
+
+-- Invokes the server, waiting and retrying briefly if we were rate-limited
+-- (e.g. very fast tapping), so the player never sees a spurious error.
+local function invoke(name: string, ...)
+	local ok, result
+	for attempt = 1, 4 do
+		ok, result = Net.Invoke(name, ...)
+		if ok or result ~= "RateLimited" then
+			break
+		end
+		task.wait(0.4 * attempt)
+	end
+	return ok, result
+end
 
 -- ===== View helpers =====
 -- Views are plain Frames (not CanvasGroups): the Game screen is already a
@@ -145,8 +163,22 @@ end
 
 local function showLifeComplete()
 	local life = DataController.GetActiveLife()
-	messageView("🌅", "A Life Complete", (if life then life.Name .. " lived to " .. life.Age .. "." else "") .. " Every choice made this story yours.", {
-		{ Text = "Main Menu", Icon = "🏠", OnClick = toMenu },
+	local body = "Every choice made this story yours."
+	if life then
+		local career = if life.Flags.Retired then "a well-earned retirement" elseif life.Career.Id ~= "None" then "life as " .. Careers.TitleAt(life.Career.Id, life.Career.Level) else "a life of their own design"
+		body = ("%s lived to %d and ended with %s, %s in the bank, and overall life score %d/100. Every choice made this story yours."):format(
+			life.Name,
+			life.Age,
+			career,
+			Format.Money(life.Money),
+			math.floor(StatMath.Overall(life.Stats) + 0.5)
+		)
+	end
+	messageView("🌅", "A Life Complete", body, {
+		{ Text = "Main Menu", Icon = "🏠", Style = "Secondary", OnClick = toMenu },
+		{ Text = "Live Again", Icon = "✨", OnClick = function()
+			UIController.Show("SlotSelect", "New")
+		end },
 	})
 end
 
@@ -297,6 +329,9 @@ local function buildCard(parent: Instance, choice, wide: boolean)
 	})
 	if not choice.Locked then
 		Create.Label({ Name = "Preview", Text = previewText(choice), RichText = true, FontFace = Theme.Font.Bold, TextSize = Theme.TextSize.Small, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4, Parent = body })
+		if choice.Tags and #choice.Tags > 0 then
+			Create.Label({ Name = "Tags", Text = table.concat(choice.Tags, "  ·  "), FontFace = Theme.Font.Bold, TextSize = Theme.TextSize.Tiny, TextColor3 = Theme.Color.Gold, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Parent = body })
+		end
 	end
 	-- Dim overlay used when another card is selected.
 	Create("Frame", { Name = "Dim", BackgroundColor3 = Theme.Color.Black, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = card }, { Create.Corner(Theme.Radius) })
@@ -461,11 +496,27 @@ end
 
 -- ===== Outcome =====
 local renderOutcome
+local renderEvent
 local advance
 
-local function sortedChanges(applied)
+-- Adds change chips (stats, money, life changes, traits) to `parent`.
+local function addChangeChips(parent: Instance, result, animateIn: boolean?, extra: { { Text: string, Color: Color3? } }?)
+	local changeList = Create.List(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Center)
+	changeList.Wraps = true
+	changeList.Parent = parent
+	local order = 0
+	local function addChip(text: string, color: Color3?)
+		order += 1
+		local chip = Components.Chip({ Text = text, Height = 38, TextColor = color, LayoutOrder = order, Parent = parent })
+		if animateIn ~= false then
+			Anim.Pop(chip, 0.6, 0.35 + order * 0.05)
+		end
+	end
+	for _, text in ipairs(result.LifeChanges or {}) do
+		addChip(text, Theme.Color.Gold)
+	end
 	local list = {}
-	for stat, delta in pairs(applied) do
+	for stat, delta in pairs(result.Applied or {}) do
 		if math.abs(delta) >= 0.05 then
 			table.insert(list, { Stat = stat, Delta = delta })
 		end
@@ -473,7 +524,27 @@ local function sortedChanges(applied)
 	table.sort(list, function(a, b)
 		return math.abs(a.Delta) > math.abs(b.Delta)
 	end)
-	return list
+	for _, change in ipairs(list) do
+		local info = StatDefinitions.Info[change.Stat]
+		if info then
+			addChip(("%s %s %s"):format(info.Icon, info.DisplayName, Format.Signed(change.Delta)), if change.Delta > 0 then Theme.Color.Positive else Theme.Color.Negative)
+		end
+	end
+	if result.MoneyDelta and result.MoneyDelta ~= 0 then
+		addChip("💰 " .. (if result.MoneyDelta > 0 then "+" else "") .. Format.Money(result.MoneyDelta), if result.MoneyDelta > 0 then Theme.Color.Positive else Theme.Color.Negative)
+	end
+	for _, item in ipairs(extra or {}) do
+		addChip(item.Text, item.Color)
+	end
+	for _, traitId in ipairs(result.TraitsGained or {}) do
+		local info = Traits.Info[traitId]
+		if info then
+			addChip("New trait: " .. info.Icon .. " " .. info.DisplayName, Theme.Color.Gold)
+		end
+	end
+	if order == 0 then
+		addChip("No big changes… for now.", Theme.Color.TextDim)
+	end
 end
 
 function renderOutcome(animateIn: boolean?)
@@ -529,35 +600,15 @@ function renderOutcome(animateIn: boolean?)
 	end
 
 	local changes = Create("Frame", { Name = "Changes", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4, Parent = panel })
-	local changeList = Create.List(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Center)
-	changeList.Wraps = true
-	changeList.Parent = changes
-	local order = 0
-	local function addChip(text: string, color: Color3?)
-		order += 1
-		local chip = Components.Chip({ Text = text, Height = 38, TextColor = color, LayoutOrder = order, Parent = changes })
-		if animateIn ~= false then
-			Anim.Pop(chip, 0.6, 0.35 + order * 0.05)
+	local extra = {}
+	if outcome.Years and outcome.Years > 0 and outcome.Income ~= 0 then
+		if outcome.Income > 0 then
+			table.insert(extra, { Text = ("💵 Earned %s over %d yr%s"):format(Format.Money(outcome.Income), outcome.Years, if outcome.Years == 1 then "" else "s"), Color = Theme.Color.Positive })
+		else
+			table.insert(extra, { Text = ("💸 Living costs %s over %d yr%s"):format(Format.Money(-outcome.Income), outcome.Years, if outcome.Years == 1 then "" else "s"), Color = Theme.Color.Negative })
 		end
 	end
-	for _, change in ipairs(sortedChanges(outcome.Applied)) do
-		local info = StatDefinitions.Info[change.Stat]
-		if info then
-			addChip(("%s %s %s"):format(info.Icon, info.DisplayName, Format.Signed(change.Delta)), if change.Delta > 0 then Theme.Color.Positive else Theme.Color.Negative)
-		end
-	end
-	if outcome.MoneyDelta ~= 0 then
-		addChip("💰 " .. (if outcome.MoneyDelta > 0 then "+" else "") .. Format.Money(outcome.MoneyDelta), if outcome.MoneyDelta > 0 then Theme.Color.Positive else Theme.Color.Negative)
-	end
-	for _, traitId in ipairs(outcome.TraitsGained) do
-		local info = Traits.Info[traitId]
-		if info then
-			addChip("New trait: " .. info.Icon .. " " .. info.DisplayName, Theme.Color.Gold)
-		end
-	end
-	if order == 0 then
-		addChip("No big changes… for now.", Theme.Color.TextDim)
-	end
+	addChangeChips(changes, outcome, animateIn, extra)
 
 	if outcome.StageCompleted then
 		Create.Label({ Text = "🏁 " .. outcome.CompletedStageName .. " complete!", FontFace = Theme.Font.Heavy, TextColor3 = Theme.Color.Gold, TextXAlignment = Enum.TextXAlignment.Center, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Parent = panel })
@@ -580,6 +631,65 @@ function renderOutcome(animateIn: boolean?)
 	if animateIn ~= false then
 		Anim.Pop(panel, 0.9)
 	end
+	UIController.Focus(continueButton)
+end
+
+-- ===== Random life event =====
+local RARITY_STYLE = {
+	Common = { Label = "LIFE EVENT", Color = Theme.Color.Accent },
+	Uncommon = { Label = "UNCOMMON EVENT", Color = Theme.Color.Positive },
+	Rare = { Label = "✨ RARE EVENT ✨", Color = Theme.Color.AccentAlt },
+	Legendary = { Label = "🌟 LEGENDARY EVENT 🌟", Color = Theme.Color.Gold },
+}
+
+function renderEvent(event, animateIn: boolean?)
+	mode = "Event"
+	local v = newView()
+	local style = RARITY_STYLE[event.Rarity] or RARITY_STYLE.Common
+	local width = math.min(720, UIController.GetVirtualSize().X - 32)
+	local scroll = Create("ScrollingFrame", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 6,
+		Selectable = false,
+		Parent = v,
+	})
+	Create.List(Enum.FillDirection.Vertical, 0, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center).Parent = scroll
+	Create.Padding(10, 16, 20, 16).Parent = scroll
+	local panel = Components.Panel({ Size = UDim2.fromOffset(width, 0), AutomaticSize = Enum.AutomaticSize.Y, Padding = 26, Parent = scroll })
+	local stroke = panel:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Color = style.Color
+		stroke.Thickness = if event.Rarity == "Legendary" then 4 else 2.5
+		stroke.Transparency = 0
+	end
+	Create.List(Enum.FillDirection.Vertical, 12, Enum.HorizontalAlignment.Center).Parent = panel
+	Create.Label({ Text = style.Label, FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.Small, TextColor3 = style.Color, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = 1, Parent = panel })
+	local icon = Create.Label({ Text = event.Icon, TextSize = 64, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 72), LayoutOrder = 2, Parent = panel })
+	Create.Label({ Text = event.Title, FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H1, TextXAlignment = Enum.TextXAlignment.Center, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, Parent = panel })
+	Create.Label({ Text = event.Story, TextSize = Theme.TextSize.H3, TextColor3 = Theme.Color.TextDim, TextXAlignment = Enum.TextXAlignment.Center, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4, Parent = panel })
+	local changes = Create("Frame", { Name = "Changes", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Parent = panel })
+	addChangeChips(changes, event, animateIn)
+	continueButton = Components.Button({
+		Name = "Continue",
+		Text = "Continue",
+		Icon = "▶",
+		Style = if event.Rarity == "Legendary" then "Primary" else "Accent",
+		Size = UDim2.fromOffset(math.min(320, width - 52), 60),
+		LayoutOrder = 6,
+		Parent = panel,
+		OnClick = function()
+			advance()
+		end,
+	})
+	if animateIn ~= false then
+		Anim.Pop(panel, 0.8, 0.45)
+		Anim.Pop(icon, 0.4, 0.6)
+	end
+	AudioController.Play(if event.Rarity == "Rare" or event.Rarity == "Legendary" then "StageComplete" else "Notify")
 	UIController.Focus(continueButton)
 end
 
@@ -630,7 +740,14 @@ function advance()
 	if busy or not outcome then
 		return
 	end
+	if pendingEvent then
+		shownEvent = pendingEvent
+		pendingEvent = nil
+		renderEvent(shownEvent, true)
+		return
+	end
 	busy = true
+	shownEvent = nil
 	local o = outcome
 	if o.StageCompleted then
 		AudioController.Play("StageComplete")
@@ -676,7 +793,7 @@ function confirmChoice()
 		Anim.Tween(Anim.Scale(selectedCard), { Scale = 1.08 }, 0.25, Enum.EasingStyle.Back)
 	end
 
-	local ok, result = Net.Invoke("MakeChoice", scenario.Id, choice.Id)
+	local ok, result = invoke("MakeChoice", scenario.Id, choice.Id)
 	busy = false
 	if not ok then
 		if result == "WrongScenario" or result == "NoLife" then
@@ -691,6 +808,7 @@ function confirmChoice()
 	AudioController.Play(if (result.Applied.Happiness or 0) >= 0 then "Positive" else "Negative")
 	task.wait(if Anim.Reduced then 0 else 0.3)
 	outcome = result
+	pendingEvent = result.Event
 	scenario = nil
 	selected = nil
 	if UIController.Current() == "Game" then
@@ -703,7 +821,7 @@ function DecisionController.Next()
 	requestToken += 1
 	local token = requestToken
 	showLoading()
-	local ok, payload = Net.Invoke("GetScenario")
+	local ok, payload = invoke("GetScenario")
 	if token ~= requestToken or UIController.Current() ~= "Game" then
 		return
 	end
@@ -740,7 +858,10 @@ end
 
 function DecisionController.Start()
 	HUDController.Opened:Connect(function()
-		if outcome then
+		-- Returning mid-way restores exactly where the player was.
+		if outcome and shownEvent then
+			renderEvent(shownEvent, false)
+		elseif outcome then
 			renderOutcome(false)
 		else
 			DecisionController.Next()
@@ -759,6 +880,8 @@ function DecisionController.Start()
 			renderScenario(false)
 		elseif mode == "Outcome" and outcome then
 			renderOutcome(false)
+		elseif mode == "Event" and shownEvent then
+			renderEvent(shownEvent, false)
 		end
 	end)
 
@@ -772,7 +895,7 @@ function DecisionController.Start()
 		elseif input.KeyCode == Enum.KeyCode.Return or input.KeyCode == Enum.KeyCode.KeypadEnter then
 			if mode == "Scenario" and selected then
 				confirmChoice()
-			elseif mode == "Outcome" then
+			elseif mode == "Outcome" or mode == "Event" then
 				advance()
 			end
 		end

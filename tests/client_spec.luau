@@ -96,17 +96,40 @@ return function(H)
 			end)
 			assert(card, "no unlocked card found (mode " .. api.Decision.GetMode() .. ")")
 			api.click(card, 0.05) -- select
-			api.click(card, 0.5) -- tap again to confirm
+			api.click(card, 0.05) -- tap again to confirm
+			api.waitMode(function(m)
+				return m == "Outcome"
+			end, 6)
 			return card.Name
 		end
+		function api.waitMode(predicate, timeout)
+			local deadline = os.clock() + (timeout or 4)
+			while not predicate(api.Decision.GetMode()) and os.clock() < deadline do
+				task.wait(0.03)
+			end
+		end
+		-- Continue from an outcome: through an event card (if any) and any transition.
+		api.eventsSeen = 0
 		function api.continue()
 			local game = api.screen("Game")
 			api.click(api.button(game, "Continue"), 0.1)
-			local deadline = os.clock() + 4
-			while api.Decision.GetMode() == "Transition" and os.clock() < deadline do
-				task.wait(0.05)
+			if api.Decision.GetMode() == "Event" then
+				api.eventsSeen += 1
+				assert(api.label(game, "EVENT"), "event card shows its rarity banner")
+				api.click(api.button(game, "Continue"), 0.1)
 			end
-			task.wait(0.3)
+			if api.Decision.GetMode() == "Transition" then
+				local skipper = H.find(game, function(d)
+					return d.ClassName == "TextButton" and d.Text == "" and d.Parent and d.Parent.Name == "View"
+				end)
+				if skipper then
+					api.click(skipper, 0.05) -- tap to skip
+				end
+			end
+			api.waitMode(function(m)
+				return m == "Scenario" or m == "Message"
+			end)
+			task.wait(0.15)
 		end
 		return api
 	end
@@ -202,26 +225,35 @@ return function(H)
 		eq(app.gui.CYL_Overlay.Root:FindFirstChild("StatsModal"), nil, "closed")
 	end)
 
-	test("Play the rest of childhood through the UI to the stage transition", function()
+	test("Play an entire life through the UI, from age 6 to 85", function()
 		app.Anim.Reduced = true
-		for _ = 1, 5 do
+		local careerSeen = false
+		for _ = 1, 37 do
 			app.decide()
 			eq(app.Decision.GetMode(), "Outcome")
 			app.continue()
+			local occupation = app.screen("Game").HUD:FindFirstChild("Occupation", true)
+			local text = occupation and occupation:FindFirstChild("Label") and occupation.Label.Text or ""
+			if text ~= "" and not text:find("Pupil") and not text:find("Student") then
+				careerSeen = true
+			end
 		end
 		eq(app.Decision.GetMode(), "Message")
-		ok(app.label(app.screen("Game"), "To be continued"), "end-of-content message")
+		ok(app.label(app.screen("Game"), "A Life Complete"), "life complete message")
+		ok(app.label(app.screen("Game"), "lived to 85"), "summary mentions final age")
 		local life = app.data().Slots.Slot1
-		eq(life.Stage, 2)
-		eq(life.Age, 13)
-		eq(#life.Decisions, 6)
+		eq(life.Completed, true)
+		eq(life.Age, 85)
+		eq(#life.Decisions, 38)
+		ok(careerSeen, "HUD showed an occupation beyond school")
+		print(("      (%d random event card(s) shown along the way)"):format(app.eventsSeen))
 	end)
 
 	test("HUD menu button returns to the menu, which now shows the life", function()
 		app.click(app.screen("Game").HUD:FindFirstChild("Menu", true), 0.3)
 		eq(app.UI.Current(), "Menu")
 		local menu = app.screen("Menu")
-		ok(app.button(menu, "Play as Zed Tester"), "personalised play button")
+		ok(app.button(menu, "Play"), "play button")
 		ok(app.label(menu, "CURRENT LIFE"), "life card")
 		ok(app.button(menu, "Continue Life"):GetAttribute("Disabled") ~= true, "Continue enabled")
 	end)

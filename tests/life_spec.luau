@@ -32,31 +32,6 @@ return function(H)
 		return server.remote(name).OnServerInvoke(player, ...)
 	end
 
-	-- Bypass rate limits for scripted play-throughs by calling the service directly.
-	local function playStage(server, player, LifeService, rng)
-		local steps = 0
-		while steps < 20 do
-			local okS, scenario = LifeService.GetScenario(player)
-			if not okS then
-				return steps, scenario
-			end
-			local open = {}
-			for _, c in ipairs(scenario.Choices) do
-				if not c.Locked then
-					table.insert(open, c)
-				end
-			end
-			local pick = open[rng:NextInteger(1, #open)]
-			local okC, outcome = LifeService.MakeChoice(player, scenario.Id, pick.Id)
-			assert(okC, "MakeChoice failed: " .. tostring(outcome))
-			steps += 1
-			if outcome.StageCompleted then
-				return steps, "StageCompleted", outcome
-			end
-		end
-		return steps, "TooMany"
-	end
-
 	section("Scenario content")
 	local server = bootServer()
 	local Scenarios = server.require("ServerScriptService.Server.Content.Scenarios")
@@ -163,7 +138,7 @@ return function(H)
 		eq(life.Age, 6)
 		eq(life.ScenarioIndex, 1)
 		eq(#life.Decisions, 1)
-		eq(#life.Story, 1)
+		ok(#life.Story >= 1, "story logged")
 		eq(life.CurrentScenario, false)
 		local again, reason = LifeService.MakeChoice(p, "C_FirstDay", "Listen")
 		eq(again, false)
@@ -229,54 +204,113 @@ return function(H)
 		eq(run(12345), run(12345))
 	end)
 
-	section("LifeService: full childhood simulation")
-	test("300 random lives all complete Childhood and stay valid", function()
+	section("LifeService: full-lifetime simulation")
+	test("400 random lives all reach the end, stay valid and cover the content", function()
+		local serde = require("@lune/serde")
 		local h = bootServer({ JobId = "sim" })
 		local LS = h.require("ServerScriptService.Server.Services.LifeService")
 		local DS = h.require("ServerScriptService.Server.Services.DataService")
 		local DT = h.require("ReplicatedStorage.Shared.Data.DataTemplate")
 		local TU = h.require("ReplicatedStorage.Shared.Util.TableUtil")
+		local SC = h.require("ServerScriptService.Server.Content.Scenarios")
+		local CR = h.require("ReplicatedStorage.Shared.Data.Careers")
 		local player = h.addPlayer(901, "Sim")
 		task.wait(0.05)
 		local rng = H.Random.new(99)
-		local seenScenarios = {}
-		local lucky = 0
-		for i = 1, 300 do
+		local LIVES = 400
+		local seen, events, careers, problems = {}, {}, {}, {}
+		local totals = { Money = 0, Married = 0, Kids = 0, Uni = 0, Retired = 0, Home = 0, Millionaire = 0, Broke = 0 }
+		local largest = 0
+		for i = 1, LIVES do
 			DS.Update(player, function(d)
 				d.Slots.Slot1 = DT.NewLife("Sim" .. i, rng:NextInteger(1, 2 ^ 30))
 				d.ActiveSlot = "Slot1"
 			end)
-			local steps, status, outcome = playStage(h, player, LS, rng)
-			eq(status, "StageCompleted", "life " .. i)
-			eq(steps, 6, "life " .. i .. " steps")
-			eq(outcome.CompletedStageName, "Childhood")
-			eq(outcome.Age, 13)
-			eq(outcome.Stage, 2)
-			local life = DS.Get(player).Slots.Slot1
+			local steps, finished = 0, false
+			while steps < 60 do
+				local okS, sc = LS.GetScenario(player)
+				if not okS then
+					table.insert(problems, ("life %d: GetScenario failed (%s) at age %d stage %d"):format(i, tostring(sc), DS.Get(player).Slots.Slot1.Age, DS.Get(player).Slots.Slot1.Stage))
+					break
+				end
+				seen[sc.Id] = true
+				local open = {}
+				for _, c in ipairs(sc.Choices) do
+					if not c.Locked then
+						table.insert(open, c)
+					end
+				end
+				if #open < 2 then
+					problems[#problems + 1] = ("%s offered only %d unlocked choice(s)"):format(sc.Id, #open)
+				end
+				local pick = open[rng:NextInteger(1, #open)]
+				local okC, out = LS.MakeChoice(player, sc.Id, pick.Id)
+				assert(okC, "MakeChoice failed: " .. tostring(out))
+				steps += 1
+				if out.Event then
+					events[out.Event.Id] = (events[out.Event.Id] or 0) + 1
+				end
+				if out.LifeCompleted then
+					finished = true
+					break
+				end
+			end
+			local data = DS.Get(player)
+			local life = data.Slots.Slot1
+			eq(finished, true, "life " .. i .. " finished")
+			eq(steps, 38, "life " .. i .. " decisions")
+			eq(life.Age, 85, "life " .. i .. " final age")
+			eq(#life.Reveals, 6, "a reveal snapshot per stage")
 			for stat, value in pairs(life.Stats) do
 				ok(value >= 0 and value <= 100, stat .. " in range")
 			end
-			ok(TU.IsSerializable(DS.Get(player)), "serializable")
-			eq(#life.Reveals, 1, "stage snapshot recorded")
-			for _, dec in ipairs(life.Decisions) do
-				seenScenarios[dec.S] = true
+			ok(life.Money >= 0 and life.Money % 1 == 0, "money is a non-negative integer")
+			ok(TU.IsSerializable(data), "serializable")
+			local size = #serde.encode("json", data)
+			largest = math.max(largest, size)
+			for flag in pairs(life.Flags) do
+				local career = flag:match("^Was_(.+)$")
+				if career then
+					careers[career] = true
+				end
 			end
-			for _, ev in ipairs(life.Story) do
-				ok(not ev.Text:find("{name}"), "name substituted")
+			if life.Flags.Was_Doctor then
+				ok(CR.EducationRank[life.Education] >= 2, "doctors have a degree")
 			end
-			if outcome.Lucky then
-				lucky += 1
+			totals.Money += life.Money
+			totals.Married += if life.Relationships.Married then 1 else 0
+			totals.Kids += if life.Relationships.Children > 0 then 1 else 0
+			totals.Uni += if CR.EducationRank[life.Education] >= 2 then 1 else 0
+			totals.Retired += if life.Flags.Retired then 1 else 0
+			totals.Home += if life.Assets.House or life.Assets.Mansion or life.Assets.Apartment then 1 else 0
+			totals.Millionaire += if life.Money >= 1e6 then 1 else 0
+			totals.Broke += if life.Money < 1000 then 1 else 0
+		end
+		eq(#problems, 0, table.concat(problems, "; "))
+
+		local unseen = {}
+		for _, sc in ipairs(SC.All) do
+			if not seen[sc.Id] then
+				table.insert(unseen, sc.Id)
 			end
 		end
-		local count = 0
-		for _ in pairs(seenScenarios) do
-			count += 1
+		local eventKinds = 0
+		for _ in pairs(events) do
+			eventKinds += 1
 		end
-		ok(count >= 10, "variety: saw " .. count .. " different scenarios")
-		-- Next stage has no content yet in this build.
-		local okS, reason = LS.GetScenario(player)
-		eq(okS, false)
-		eq(reason, "StageNotAvailable")
+		local careerKinds = 0
+		for _ in pairs(careers) do
+			careerKinds += 1
+		end
+		print(("      scenarios: %d/%d seen%s"):format(#SC.All - #unseen, #SC.All, if #unseen > 0 then " (unseen: " .. table.concat(unseen, ", ") .. ")" else ""))
+		print(("      events: %d/%d kinds seen; careers reached: %d; largest save: %.1f KB"):format(eventKinds, #SC.Events, careerKinds, largest / 1024))
+		print(("      endings: avg money %s · married %d%% · kids %d%% · degree %d%% · retired %d%% · homeowner %d%% · millionaire %d%% · broke %d%%"):format(
+			tostring(math.floor(totals.Money / LIVES)), totals.Married * 100 // LIVES, totals.Kids * 100 // LIVES, totals.Uni * 100 // LIVES,
+			totals.Retired * 100 // LIVES, totals.Home * 100 // LIVES, totals.Millionaire * 100 // LIVES, totals.Broke * 100 // LIVES))
+		ok(#unseen <= math.floor(#SC.All * 0.1), "at least 90% of scenarios reachable by random play")
+		ok(eventKinds >= 20, "a wide variety of random events")
+		ok(careerKinds >= 14, "many different careers reached")
+		ok(largest < 64 * 1024, "save stays small")
 		h.close()
 	end)
 
@@ -323,6 +357,146 @@ return function(H)
 		eq(DataService.Get(p).Slots.Slot2, false)
 		eq(select(2, LifeService.GetScenario(p)), "NoLife")
 	end)
+
+	section("Life engine: conditions, effects, income, events")
+	local h = bootServer({ JobId = "engine" })
+	local DT = h.require("ReplicatedStorage.Shared.Data.DataTemplate")
+	local Conditions = h.require("ServerScriptService.Server.Lib.Conditions")
+	local Consequences = h.require("ServerScriptService.Server.Lib.Consequences")
+	local Yearly = h.require("ServerScriptService.Server.Lib.Yearly")
+	local RandomEvents = h.require("ServerScriptService.Server.Lib.RandomEvents")
+	local SC = h.require("ServerScriptService.Server.Content.Scenarios")
+	local CR = h.require("ReplicatedStorage.Shared.Data.Careers")
+	local rng = H.Random.new(5)
+
+	test("Career, education, relationship and asset effects apply and report", function()
+		local life = DT.NewLife("Eng", 1)
+		life.Age = 25
+		local s1 = Consequences.Apply(life, { Career = "Doctor", Education = "University", Partner = true }, rng)
+		eq(life.Career.Id, "Doctor")
+		eq(life.Career.Level, 1)
+		eq(life.Education, "University")
+		eq(life.Relationships.Partner, true)
+		eq(life.Flags.Was_Doctor, true)
+		ok(#s1.LifeChanges >= 3, "life changes listed")
+		Consequences.Apply(life, { Education = "School" }, rng)
+		eq(life.Education, "University", "education never goes down")
+		Consequences.Apply(life, { Married = true, Children = 2, Promote = 1 }, rng)
+		eq(life.Relationships.Married, true)
+		eq(life.Relationships.Children, 2)
+		eq(life.Career.Level, 2)
+		life.Money = 300000
+		Consequences.Apply(life, { Assets = { "House" }, Money = -260000 }, rng)
+		eq(life.Money, 40000)
+		eq(life.Assets.House, true)
+		ok(life.Stats.Wealth > 60, "house counts toward wealth")
+		Consequences.Apply(life, { MoneyPercent = -0.5 }, rng)
+		eq(life.Money, 20000)
+		Consequences.Apply(life, { Married = false, Partner = false }, rng)
+		eq(life.Relationships.Married, false)
+		Consequences.Apply(life, { Retire = true }, rng)
+		eq(life.Flags.Retired, true)
+		eq(life.Career.Id, "None")
+		ok(life.PeakSalary >= CR.SalaryAt("Doctor", 2), "peak salary kept for pension")
+	end)
+
+	test("Conditions check careers, education, family and assets", function()
+		local life = DT.NewLife("Eng", 1)
+		life.Age = 30
+		ok(Conditions.Check(life, { HasCareer = false }))
+		ok(not Conditions.Check(life, { HasCareer = true }))
+		life.Career = { Id = "Lawyer", Level = 3, YearsInRole = 0 }
+		life.Education = "University"
+		ok(Conditions.Check(life, { Careers = { "Doctor", "Lawyer" }, MinCareerLevel = 3, MinEducation = "School" }))
+		ok(not Conditions.Check(life, { NotCareers = { "Lawyer" } }))
+		ok(not Conditions.Check(life, { MaxEducation = "School" }))
+		life.Relationships.Children = 1
+		ok(Conditions.Check(life, { MinChildren = 1, Partner = false }))
+		ok(not Conditions.Check(life, { MaxChildren = 0 }))
+		life.Assets.Apartment = true
+		ok(Conditions.Check(life, { AnyAssets = { "House", "Apartment" }, NotAssets = { "Mansion" } }))
+		ok(not Conditions.Check(life, { Assets = { "House" } }))
+	end)
+
+	test("Yearly income: salary savings, unemployment costs, children, pension", function()
+		local life = DT.NewLife("Eng", 1)
+		life.Career = { Id = "Teacher", Level = 1, YearsInRole = 0 }
+		local summary = Consequences.NewSummary()
+		local rate = Yearly.BaseSavingsRate
+		local r = Yearly.Advance(life, 26, 2, rng, summary)
+		eq(r.Income, math.floor(CR.SalaryAt("Teacher", 1) * rate - Yearly.RentCost) * 2, "salary savings minus rent")
+		eq(life.Career.YearsInRole, 2)
+		life.Assets.Apartment = true -- homeowners pay no rent
+		life.Relationships.Children = 1
+		local before = life.Money
+		Yearly.Advance(life, 28, 1, rng, Consequences.NewSummary())
+		eq(life.Money - before, math.floor(CR.SalaryAt("Teacher", 1) * rate - Yearly.ChildCost))
+		-- Unemployed adults lose savings but never go below zero.
+		life.Career = { Id = "None", Level = 0, YearsInRole = 0 }
+		life.Money = 3000
+		Yearly.Advance(life, 30, 2, rng, Consequences.NewSummary())
+		eq(life.Money, 0)
+		-- Retired: pension from peak salary.
+		life.Relationships.Children = 0
+		life.Flags.Retired = true
+		life.PeakSalary = 100000
+		Yearly.Advance(life, 70, 1, rng, Consequences.NewSummary())
+		eq(life.Money, math.floor(100000 * Yearly.PensionShare * Yearly.BaseSavingsRate))
+	end)
+
+	test("Ageing lowers Health after 50", function()
+		local life = DT.NewLife("Eng", 1)
+		local s = Consequences.NewSummary()
+		Yearly.Advance(life, 70, 4, rng, s)
+		ok(life.Stats.Health < 50, "health declines")
+		ok((s.Applied.Health or 0) < 0)
+	end)
+
+	test("Random events respect circumstances", function()
+		local life = DT.NewLife("Eng", 1)
+		life.Stage = 4
+		life.Age = 30
+		local function eligibleIds()
+			local ids = {}
+			for _, e in ipairs(RandomEvents.Eligible(life, SC.Events)) do
+				ids[e.Id] = true
+			end
+			return ids
+		end
+		local ids = eligibleIds()
+		eq(ids.E_LoseJob, nil, "can't lose a job you don't have")
+		eq(ids.E_Twins, nil, "twins need a marriage")
+		eq(ids.E_BadInvestment, nil, "can't lose savings you don't have")
+		ok(ids.E_Lottery, "anyone can win the lottery")
+		life.Career = { Id = "Engineer", Level = 1, YearsInRole = 0 }
+		life.Money = 50000
+		ids = eligibleIds()
+		ok(ids.E_LoseJob and ids.E_BadInvestment, "now eligible")
+		table.insert(life.Events, "E_Lottery")
+		eq(eligibleIds().E_Lottery, nil, "once per life")
+	end)
+
+	test("Legendary events are extremely rare", function()
+		local Config = h.require("ReplicatedStorage.Shared.Config")
+		local life = DT.NewLife("Eng", 1)
+		life.Stage = 4
+		life.Age = 30
+		local r = H.Random.new(1234)
+		local legendary, any = 0, 0
+		for _ = 1, 20000 do
+			local e = RandomEvents.Roll(life, SC.Events, r)
+			if e then
+				any += 1
+				if e.Rarity == "Legendary" then
+					legendary += 1
+				end
+			end
+		end
+		local rate = any / 20000
+		ok(math.abs(rate - Config.EventChance) < 0.02, "event rate ≈ EventChance (" .. rate .. ")")
+		ok(legendary / 20000 < 0.005, "legendary < 0.5% of decisions (" .. legendary .. ")")
+	end)
+	h.close()
 
 	server.close()
 end

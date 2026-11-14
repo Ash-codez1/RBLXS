@@ -19,6 +19,8 @@ local LifeStages = require(Shared.Data.LifeStages)
 local StatDefinitions = require(Shared.Data.StatDefinitions)
 local Traits = require(Shared.Data.Traits)
 local StatMath = require(Shared.Util.StatMath)
+local Careers = require(Shared.Data.Careers)
+local Assets = require(Shared.Data.Assets)
 
 local UILib = script.Parent.Parent:WaitForChild("UILib")
 local Theme = require(UILib.Theme)
@@ -40,12 +42,15 @@ local hud: Frame
 local refs: { [string]: any } = {}
 local statsModal: CanvasGroup? = nil
 
--- Occupation until the career system (Phase 4) assigns a real job.
 function HUDController.Occupation(life): string
-	if life.Career and life.Career.Id ~= "None" then
-		return life.Career.Title or life.Career.Id
+	if life.Career and life.Career.Id ~= "None" and Careers.Info[life.Career.Id] then
+		return Careers.TitleAt(life.Career.Id, life.Career.Level)
 	end
-	if life.Age <= 11 then
+	if life.Flags.Retired then
+		return "Retired"
+	elseif life.Flags.AtUni then
+		return "University Student"
+	elseif life.Age <= 11 then
 		return "Primary School Pupil"
 	elseif life.Age <= 18 then
 		return "Secondary School Student"
@@ -96,6 +101,7 @@ local function render()
 	end
 	local function chip(parent, key, order)
 		refs[key] = Components.Chip({ Text = "", Height = 40, LayoutOrder = order, Parent = parent })
+		refs[key].Name = key
 	end
 	local function bar(parent, statName, width, order)
 		local info = StatDefinitions.Info[statName]
@@ -250,11 +256,37 @@ function HUDController.OpenStats()
 		end
 	end
 
+	Create.Label({ Text = "LIFE", TextSize = Theme.TextSize.Tiny, FontFace = Theme.Font.Heavy, TextColor3 = Theme.Color.Primary, LayoutOrder = 10, Parent = scroll })
+	local rel = life.Relationships
+	local relationship = if rel.Married then "Married" elseif rel.Partner then "In a relationship" else "Single"
+	local owned = {}
+	for id in pairs(life.Assets) do
+		local info = Assets.Info[id]
+		if info then
+			table.insert(owned, info.Icon .. " " .. info.Title)
+		end
+	end
+	table.sort(owned)
+	local career = HUDController.Occupation(life)
+	if life.Career.Id ~= "None" then
+		career ..= (" · %s/yr"):format(Format.Money(Careers.SalaryAt(life.Career.Id, life.Career.Level)))
+	end
+	local facts = {
+		"💼  " .. career,
+		"🎓  " .. (Careers.EducationNames[life.Education] or "None"),
+		"❤️  " .. relationship .. (if rel.Children > 0 then ("  ·  👶 %d %s"):format(rel.Children, if rel.Children == 1 then "child" else "children") else ""),
+		"🏠  " .. (if #owned > 0 then table.concat(owned, ", ") else "No property yet"),
+		"💰  Net worth " .. Format.Money(life.Money + Assets.TotalValue(life.Assets)),
+	}
+	for i, fact in ipairs(facts) do
+		Create.Label({ Text = fact, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 10 + i, Parent = scroll })
+	end
+
 	Create.Label({
 		Text = ("📝 %d decisions made this life"):format(#life.Decisions),
 		TextColor3 = Theme.Color.TextDim,
 		TextSize = Theme.TextSize.Small,
-		LayoutOrder = 4,
+		LayoutOrder = 20,
 		Parent = scroll,
 	})
 

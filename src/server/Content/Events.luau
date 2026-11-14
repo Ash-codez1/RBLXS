@@ -1,0 +1,95 @@
+--[[
+	Random life events  (ServerScriptService.Server.Content.Events)
+	Unexpected things that can happen after any decision (see Lib/RandomEvents).
+	Fields: Id, Title, Icon, Rarity (Common|Uncommon|Rare|Legendary),
+	Stages (list), Requires?, Boost?, Once? (default true), Effects (Consequences format).
+	Several events set flags that unlock special scenarios later (hidden branches).
+]]
+
+local KID, TEEN, YOUNG, ADULT, MID, OLD = 1, 2, 3, 4, 5, 6
+
+return {
+	-- ===== Childhood =====
+	{ Id = "E_FoundMoney", Title = "Lucky Find", Icon = "💵", Rarity = "Common", Stages = { KID, TEEN },
+		Effects = { Money = 20, Stats = { Happiness = 4 }, Story = "{name} found a $20 note on the pavement. Nobody claimed it." } },
+	{ Id = "E_BrokenArm", Title = "Ouch!", Icon = "🩹", Rarity = "Common", Stages = { KID, TEEN },
+		Effects = { Stats = { Health = -7, Popularity = 3 }, Story = "{name} fell off a climbing frame and broke an arm. Everyone signed the cast." } },
+	{ Id = "E_ArtPrize", Title = "Prize Winner", Icon = "🏆", Rarity = "Uncommon", Stages = { KID }, Requires = { AnyFlags = { "Creative", "WritingTalent", "MusicTalent" } },
+		Effects = { Stats = { Happiness = 6, Reputation = 5 }, Flags = { "AwardWinner" }, Story = "{name}'s work won first prize in a regional young creators' competition!" } },
+	{ Id = "E_NewSibling", Title = "A New Sibling", Icon = "🍼", Rarity = "Uncommon", Stages = { KID },
+		Effects = { Stats = { Relationships = 5, Happiness = 2 }, Flags = { "HasSibling" }, Story = "The family grew: {name} became a big sibling." } },
+	{ Id = "E_PuppyKid", Title = "A Furry Friend", Icon = "🐶", Rarity = "Common", Stages = { KID },
+		Effects = { Stats = { Happiness = 7, Health = 2 }, Flags = { "ChildhoodPet" }, Story = "The family adopted a scruffy puppy who followed {name} everywhere." } },
+
+	-- ===== Teenage years =====
+	{ Id = "E_Scholarship", Title = "Scholarship Offer", Icon = "🎓", Rarity = "Rare", Stages = { TEEN }, Requires = { MinStats = { Intelligence = 62 } },
+		Boost = { Flags = { GoodGrades = 3 } },
+		Effects = { Money = 8000, Stats = { Happiness = 6, Reputation = 6 }, Flags = { "Scholarship" }, Story = "Out of nowhere, a letter: {name} had been awarded a scholarship for their grades!" } },
+	{ Id = "E_TalentScout", Title = "Talent Scout", Icon = "🔭", Rarity = "Rare", Stages = { TEEN }, Requires = { AnyFlags = { "Athlete", "SportsStudies", "TeamPlayer" } },
+		Effects = { Stats = { Popularity = 6, Happiness = 5 }, Flags = { "Scouted" }, Story = "A professional scout watched {name} play and asked for their contact details." } },
+	{ Id = "E_ViralVideo", Title = "Gone Viral!", Icon = "📈", Rarity = "Rare", Stages = { TEEN, YOUNG }, Requires = { AnyFlags = { "ChannelStarted", "StreamerSeed" } },
+		Effects = { Stats = { Popularity = 10, Happiness = 4 }, Flags = { "TeenFamous" }, Story = "One of {name}'s videos exploded overnight: two million views and counting." } },
+	{ Id = "E_SportsInjury", Title = "Injury Setback", Icon = "🦵", Rarity = "Uncommon", Stages = { TEEN, YOUNG }, Requires = { AnyFlags = { "Athlete", "Scouted" } },
+		Effects = { Stats = { Health = -8, Happiness = -5 }, Flags = { "OldInjury" }, Story = "{name} tore a ligament mid-match and spent months recovering." } },
+	{ Id = "E_BestFriendMoves", Title = "Goodbye, Best Friend", Icon = "👋", Rarity = "Common", Stages = { TEEN },
+		Effects = { Stats = { Relationships = -4, Happiness = -4 }, Story = "{name}'s best friend moved to another country. They promised to video call every week." } },
+
+	-- ===== Young adulthood =====
+	{ Id = "E_Inheritance", Title = "An Unexpected Inheritance", Icon = "📜", Rarity = "Rare", Stages = { YOUNG, ADULT, MID },
+		Boost = { Stats = { Relationships = { Min = 65, Multiplier = 2 } } },
+		Effects = { Money = 60000, Stats = { Happiness = 3 }, Story = "A distant great-aunt {name} had visited every summer left them $60,000 in her will.",
+			Outcomes = { { Chance = 0.2, Money = 240000, Story = "And a house by the sea, which sold for another $240,000!" } } } },
+	{ Id = "E_LostWallet", Title = "Wallet Gone", Icon = "👛", Rarity = "Common", Stages = { YOUNG, ADULT },
+		Effects = { Money = -300, Stats = { Happiness = -3 }, Story = "{name} lost their wallet on the bus. Cards cancelled, $300 gone." } },
+	{ Id = "E_Mentor", Title = "A Mentor Appears", Icon = "🧑‍🏫", Rarity = "Uncommon", Stages = { YOUNG, ADULT }, Requires = { HasCareer = true },
+		Effects = { Stats = { Career = 8, Intelligence = 3 }, Flags = { "Mentored" }, Story = "A senior figure in {name}'s field took them under their wing." } },
+	{ Id = "E_CarCrash", Title = "Car Accident", Icon = "🚑", Rarity = "Uncommon", Stages = { YOUNG, ADULT, MID },
+		Effects = { Stats = { Health = -10, Happiness = -4 }, Money = -2000, Story = "{name} was in a car accident. Bruised and shaken, but alive." } },
+	{ Id = "E_LifeChangingMeeting", Title = "A Life-Changing Meeting", Icon = "✨", Rarity = "Uncommon", Stages = { YOUNG, ADULT }, Requires = { Partner = false },
+		Effects = { Partner = true, Stats = { Happiness = 9, Relationships = 8 }, Flags = { "SoulMate" }, Story = "A spilled coffee, an apology, a three-hour conversation. {name} had met someone special." } },
+	{ Id = "E_SpaceAgency", Title = "The Space Agency Calls", Icon = "🛰️", Rarity = "Legendary", Stages = { YOUNG, ADULT }, Requires = { Careers = { "Scientist", "Engineer" }, MinStats = { Intelligence = 70 } },
+		Effects = { Stats = { Happiness = 8, Reputation = 6 }, Flags = { "SpaceInvite" }, Story = "An email arrived from the national space agency. They wanted {name} to apply to the astronaut programme." } },
+
+	-- ===== Adulthood / middle age =====
+	{ Id = "E_LoseJob", Title = "Laid Off", Icon = "📦", Rarity = "Uncommon", Stages = { ADULT, MID }, Requires = { HasCareer = true },
+		Boost = { Stats = { Career = { Max = 40, Multiplier = 2.5 } } },
+		Effects = { Career = "None", Stats = { Happiness = -9, Career = -10 }, Flags = { "LaidOff" }, Story = "Budget cuts. {name} packed their desk into a cardboard box." } },
+	{ Id = "E_Bonus", Title = "Surprise Bonus", Icon = "💰", Rarity = "Common", Stages = { ADULT, MID }, Requires = { HasCareer = true },
+		Effects = { Money = 8000, Stats = { Happiness = 4, Career = 2 }, Story = "A great year at work earned {name} an $8,000 bonus." } },
+	{ Id = "E_SurprisePromotion", Title = "Unexpected Promotion", Icon = "📈", Rarity = "Uncommon", Stages = { YOUNG, ADULT, MID }, Requires = { HasCareer = true },
+		Boost = { Stats = { Career = { Min = 60, Multiplier = 2 } } },
+		Effects = { Promote = 1, Stats = { Happiness = 5 }, Story = "{name}'s boss called them in and offered a promotion on the spot." } },
+	{ Id = "E_BusinessBoom", Title = "Business Boom", Icon = "🚀", Rarity = "Rare", Stages = { ADULT, MID }, Requires = { Careers = { "Entrepreneur", "BusinessOwner", "RealEstate" } },
+		Effects = { Money = 500000, Promote = 1, Stats = { Happiness = 8, Reputation = 5 }, Flags = { "BigExit" }, Story = "{name}'s company landed a massive deal. Overnight, they were half a million dollars richer." } },
+	{ Id = "E_BadInvestment", Title = "Terrible Investment", Icon = "📉", Rarity = "Uncommon", Stages = { ADULT, MID }, Requires = { MinMoney = 20000 },
+		Effects = { MoneyPercent = -0.35, Stats = { Happiness = -7 }, Flags = { "BurnedInvestor" }, Story = "A 'can't-lose' investment lost. {name} watched a third of their savings vanish." } },
+	{ Id = "E_Famous", Title = "Overnight Celebrity", Icon = "🌟", Rarity = "Rare", Stages = { YOUNG, ADULT, MID }, Requires = { MinStats = { Popularity = 72 } },
+		Effects = { Stats = { Popularity = 12, Happiness = 4, Health = -2 }, Flags = { "Celebrity" }, Story = "A TV appearance turned {name} into a household name. Strangers asked for selfies." } },
+	{ Id = "E_Twins", Title = "Double Surprise", Icon = "👶👶", Rarity = "Rare", Stages = { ADULT }, Requires = { Married = true, MaxChildren = 2 },
+		Effects = { Children = 2, Stats = { Happiness = 8, Health = -4 }, Story = "Twins! {name}'s family doubled in a single day." } },
+	{ Id = "E_LateBloomer", Title = "Extraordinary Talent", Icon = "💎", Rarity = "Legendary", Stages = { ADULT, MID },
+		Effects = { Stats = { Happiness = 12, Popularity = 10 }, Flags = { "LateBloomer" }, Story = "At a friend's party, {name} picked up an instrument for the first time and played like a virtuoso. A record producer was in the room." } },
+	{ Id = "E_Burglary", Title = "Break-In", Icon = "🚨", Rarity = "Common", Stages = { ADULT, MID }, Requires = { MinMoney = 5000 },
+		Effects = { Money = -3000, Stats = { Happiness = -5 }, Story = "Burglars broke into {name}'s home while they were away." } },
+	{ Id = "E_Lottery", Title = "JACKPOT!", Icon = "🎰", Rarity = "Legendary", Stages = { YOUNG, ADULT, MID, OLD },
+		Effects = { Money = 5000000, Stats = { Happiness = 15 }, Flags = { "LotteryWinner" }, Story = "{name} checked an old lottery ticket on a whim. Every number matched. FIVE MILLION DOLLARS." } },
+	{ Id = "E_FortuneLost", Title = "Fortune Lost", Icon = "🌪️", Rarity = "Rare", Stages = { ADULT, MID }, Requires = { MinMoney = 300000 },
+		Effects = { MoneyPercent = -0.6, Stats = { Happiness = -10, Reputation = -4 }, Flags = { "LostFortune" }, Story = "A market crash and a crooked advisor wiped out most of {name}'s fortune." } },
+	{ Id = "E_HealthScare", Title = "Health Scare", Icon = "🏥", Rarity = "Uncommon", Stages = { MID, OLD },
+		Boost = { Stats = { Health = { Max = 40, Multiplier = 2.5 } } },
+		Effects = { Stats = { Health = -10, Happiness = -5 }, Flags = { "HealthScare" }, Story = "A routine check-up found something worrying. {name} spent weeks in and out of hospital." } },
+	{ Id = "E_Reunion", Title = "Old Friend Returns", Icon = "🤗", Rarity = "Common", Stages = { ADULT, MID, OLD },
+		Effects = { Stats = { Relationships = 6, Happiness = 5 }, Friends = 1, Story = "An old school friend tracked {name} down online. They picked up exactly where they left off." } },
+
+	-- ===== Retirement =====
+	{ Id = "E_Grandchild", Title = "A Grandchild!", Icon = "👶", Rarity = "Common", Stages = { MID, OLD }, Requires = { MinChildren = 1 },
+		Effects = { Stats = { Happiness = 10, Relationships = 6 }, Flags = { "Grandparent" }, Story = "{name} held their first grandchild and cried happy tears." } },
+	{ Id = "E_Award", Title = "Lifetime Achievement Award", Icon = "🏆", Rarity = "Rare", Stages = { MID, OLD }, Requires = { MinStats = { Reputation = 70 } },
+		Effects = { Stats = { Happiness = 8, Reputation = 8, Popularity = 6 }, Flags = { "LifetimeAward" }, Story = "{name} received a lifetime achievement award in front of a standing ovation." } },
+	{ Id = "E_OldLetter", Title = "A Letter from the Past", Icon = "✉️", Rarity = "Common", Stages = { OLD },
+		Effects = { Stats = { Happiness = 5, Relationships = 3 }, Story = "{name} found a letter they'd written to their future self at age ten. They laughed until they cried." } },
+	{ Id = "E_Fall", Title = "A Nasty Fall", Icon = "🦯", Rarity = "Uncommon", Stages = { OLD },
+		Effects = { Stats = { Health = -8, Happiness = -3 }, Story = "{name} slipped on the stairs and needed a long recovery." } },
+	{ Id = "E_Viral80", Title = "Internet Grandparent", Icon = "📱", Rarity = "Rare", Stages = { OLD },
+		Effects = { Stats = { Popularity = 12, Happiness = 8 }, Flags = { "ViralSenior" }, Story = "A video of {name} dancing at a family party went viral. Millions now call them 'the coolest grandparent alive'." } },
+}
