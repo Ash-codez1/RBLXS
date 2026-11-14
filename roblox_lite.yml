@@ -1,0 +1,41 @@
+---
+base: luau
+name: roblox_lite
+globals:
+  game: { any: true }
+  workspace: { any: true }
+  script: { any: true }
+  plugin: { any: true }
+  Instance.new: { args: [ { type: string }, { required: false, type: any } ] }
+  Color3.fromRGB: { args: [ {type: number}, {type: number}, {type: number} ] }
+  Color3.new: { args: [ {type: number}, {type: number}, {type: number} ] }
+  Enum: { any: true }
+  task.wait: { args: [ { required: false, type: number } ] }
+  task.spawn: { args: [ { type: any }, { type: "...", required: false } ] }
+  task.defer: { args: [ { type: any }, { type: "...", required: false } ] }
+  task.delay: { args: [ { type: number }, { type: any }, { type: "...", required: false } ] }
+  task.cancel: { args: [ { type: any } ] }
+  warn: { args: [ { type: "...", required: false } ] }
+  tick: { args: [] }
+  UDim2.new: { args: [ {type: number}, {type: number}, {type: number}, {type: number} ] }
+  UDim2.fromScale: { args: [ {type: number}, {type: number} ] }
+  UDim2.fromOffset: { args: [ {type: number}, {type: number} ] }
+  UDim.new: { args: [ {type: number}, {type: number} ] }
+  Vector2.new: { args: [ {type: number}, {type: number} ] }
+  Vector3.new: { args: [ {required: false, type: number}, {required: false, type: number}, {required: false, type: number} ] }
+  CFrame.new: { args: [ { type: "...", required: false } ] }
+  CFrame.lookAt: { args: [ { type: "...", required: false } ] }
+  CFrame.Angles: { args: [ {type: number}, {type: number}, {type: number} ] }
+  TweenInfo.new: { args: [ { type: "...", required: false } ] }
+  NumberSequence.new: { args: [ { type: "...", required: false } ] }
+  ColorSequence.new: { args: [ { type: "...", required: false } ] }
+  NumberRange.new: { args: [ { type: "...", required: false } ] }
+  Random.new: { args: [ { required: false, type: number } ] }
+  DateTime.now: { args: [] }
+  RaycastParams.new: { args: [] }
+  Font.new: { args: [ { type: "...", required: false } ] }
+  Font.fromEnum: { args: [ { type: "...", required: false } ] }
+  BrickColor.new: { args: [ { type: "...", required: false } ] }
+  PhysicalProperties.new: { args: [ { type: "...", required: false } ] }
+  ColorSequenceKeypoint.new: { args: [ { type: "...", required: false } ] }
+  NumberSequenceKeypoint.new: { args: [ { type: "...", required: false } ] }
