@@ -17,18 +17,24 @@ globals:
   task.cancel: { args: [ { type: any } ] }
   warn: { args: [ { type: "...", required: false } ] }
   tick: { args: [] }
-  UDim2.new: { args: [ {type: number}, {type: number}, {type: number}, {type: number} ] }
+  UDim2.new: { args: [ {required: false, type: number}, {required: false, type: number}, {required: false, type: number}, {required: false, type: number} ] }
   UDim2.fromScale: { args: [ {type: number}, {type: number} ] }
   UDim2.fromOffset: { args: [ {type: number}, {type: number} ] }
   UDim.new: { args: [ {type: number}, {type: number} ] }
-  Vector2.new: { args: [ {type: number}, {type: number} ] }
+  Vector2.new: { args: [ {required: false, type: number}, {required: false, type: number} ] }
+  Vector2.zero: { property: read-only }
+  Vector2.one: { property: read-only }
+  Vector3.zero: { property: read-only }
+  Vector3.one: { property: read-only }
+  CFrame.identity: { property: read-only }
+  Color3.fromHex: { args: [ {type: string} ] }
+  ColorSequence.new: { args: [ { type: "...", required: false } ] }
   Vector3.new: { args: [ {required: false, type: number}, {required: false, type: number}, {required: false, type: number} ] }
   CFrame.new: { args: [ { type: "...", required: false } ] }
   CFrame.lookAt: { args: [ { type: "...", required: false } ] }
   CFrame.Angles: { args: [ {type: number}, {type: number}, {type: number} ] }
   TweenInfo.new: { args: [ { type: "...", required: false } ] }
   NumberSequence.new: { args: [ { type: "...", required: false } ] }
-  ColorSequence.new: { args: [ { type: "...", required: false } ] }
   NumberRange.new: { args: [ { type: "...", required: false } ] }
   Random.new: { args: [ { required: false, type: number } ] }
   DateTime.now: { args: [] }

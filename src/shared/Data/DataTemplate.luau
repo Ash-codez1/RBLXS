@@ -25,6 +25,7 @@
 local Config = require(script.Parent.Parent.Config)
 local StatDefinitions = require(script.Parent.StatDefinitions)
 local TableUtil = require(script.Parent.Parent.Util.TableUtil)
+local StatMath = require(script.Parent.Parent.Util.StatMath)
 
 local DataTemplate = {}
 
@@ -96,7 +97,8 @@ function DataTemplate.NewLife(name: string, seed: number)
 	for _, statName in ipairs(StatDefinitions.Order) do
 		stats[statName] = Config.StatStart
 	end
-	stats.Wealth = 10 -- children start with little money of their own
+	-- Wealth is always derived from net worth (see StatMath.WealthFromNetWorth).
+	stats.Wealth = StatMath.WealthFromNetWorth(Config.StartingMoney)
 
 	return {
 		Name = name,
@@ -116,6 +118,7 @@ function DataTemplate.NewLife(name: string, seed: number)
 		Decisions = {}, -- array of { Scenario, Choice, Age, Stage }
 		Story = {}, -- array of short story lines for Life History
 		Events = {}, -- array of random-event ids that happened
+		Seen = {}, -- { [scenarioId] = true } scenarios already played this life
 		Reveals = {}, -- array of Life Reveal snapshots per stage
 		CurrentScenario = false, -- the scenario the server is waiting on, or false
 		Completed = false,

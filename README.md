@@ -2,23 +2,25 @@
 
 > Every choice you make shapes your future.
 
-Built in Luau as a [Rojo](https://rojo.space) project, so every script is a plain file you can sync into Roblox Studio (or create by hand; see below).
+Built in Luau as a [Rojo](https://rojo.space) project, so every script is a plain file you can sync into Roblox Studio (or create by hand; see §1).
 
 ## Build progress
 
 | Phase | System | Status |
 |---|---|---|
-| 1 | Architecture: folders, bootstrap, networking, data, stats, settings | ✅ Done, 38 automated tests passing |
-| 2 | Main menu, HUD, decision UI, settings UI, responsive layout | ⏳ Next |
-| 3 | Six life stages, scenarios, branching, consequences | ⬜ |
+| 1 | Architecture: bootstrap, networking, saving, stats, settings | ✅ Done |
+| 2 | Main menu, HUD, decision UI, settings, responsive layout (PC / mobile / tablet / console) | ✅ Done |
+| 2+ | Playable slice: save slots, new/continue/delete life, full **Childhood** stage (11 scenarios) | ✅ Done |
+| 3 | Remaining five life stages, random events, deeper branching | ⏳ Next |
 | 4 | Careers, relationships, finances | ⬜ |
-| 5 | Life Reveal: predictions, probabilities, cinematics, final reveal, history | ⬜ |
-| 6 | Multiplayer: shared scenarios, group voting, comparisons, privacy | ⬜ |
+| 5 | Life Reveal: predictions, probabilities, cinematics, final reveal, Life History | ⬜ |
+| 6 | Multiplayer: shared scenarios, group voting, comparisons | ⬜ |
 | 7 | Shop, currency, inventory, monetisation | ⬜ |
-| 8 | World and environment | ⬜ |
-| 9 | Achievements, daily rewards, challenges, leaderboards, save slots | ⬜ |
-| 10 | Saving and security hardening | ⬜ (core already done in Phase 1) |
-| 11 | Testing and polish | ⬜ |
+| 8 | World and environment, music and sound | ⬜ |
+| 9 | Achievements, daily rewards, challenges, leaderboards | ⬜ |
+| 10–11 | Security hardening, testing, polish | ⬜ (core saving/security done in Phase 1) |
+
+**72 automated tests pass** (`lune run tests/run.luau`), including a full click-through of the UI on desktop, phone portrait, phone landscape and gamepad. Nothing has been play-tested inside Roblox Studio yet; see §4.
 
 ---
 
@@ -26,109 +28,118 @@ Built in Luau as a [Rojo](https://rojo.space) project, so every script is a plai
 
 ```
 ReplicatedStorage
-└─ Shared                         (Folder)
-   ├─ Config                      (ModuleScript)  src/shared/Config.luau
-   ├─ Data                        (Folder)
-   │  ├─ DataTemplate             (ModuleScript)  save schema, new life, migrations
-   │  ├─ LifeStages               (ModuleScript)  the 6 stages + age progression
-   │  └─ StatDefinitions          (ModuleScript)  the 8 stats
-   ├─ Net                         (ModuleScript)  src/shared/Net/init.luau
-   │  └─ RemoteDefinitions        (ModuleScript)  every remote, one list
-   └─ Util                        (Folder)
-      ├─ Signal                   (ModuleScript)
-      ├─ StatMath                 (ModuleScript)  pure stat maths (server + previews)
-      └─ TableUtil                (ModuleScript)
+└─ Shared                              Folder
+   ├─ Config                           ModuleScript   constants, credits, loading tips
+   ├─ Data                             Folder
+   │  ├─ DataTemplate                  ModuleScript   save schema, new life, migrations
+   │  ├─ LifeStages                    ModuleScript   6 stages, ages, decisions per stage
+   │  ├─ NamePool                      ModuleScript   names for the "Random" button
+   │  ├─ SoundIds                      ModuleScript   audio asset ids (fill in, see §3)
+   │  ├─ StatDefinitions               ModuleScript   the 8 stats
+   │  └─ Traits                        ModuleScript   13 personality traits
+   ├─ Net                              ModuleScript   (src/shared/Net/init.luau)
+   │  └─ RemoteDefinitions             ModuleScript   every remote + rate limits
+   └─ Util                             Folder
+      ├─ Format, Signal, StatMath, TableUtil          ModuleScripts
 
 ServerScriptService
-└─ Server                         (Folder)
-   ├─ Main                        (Script)        src/server/Main.server.luau
-   ├─ Lib                         (Folder)
-   │  ├─ MockDataStore            (ModuleScript)
-   │  ├─ SessionLock              (ModuleScript)
-   │  └─ Validate                 (ModuleScript)
-   └─ Services                    (Folder)
-      ├─ DataService              (ModuleScript)
-      ├─ SettingsService          (ModuleScript)
-      └─ StatService              (ModuleScript)
+└─ Server                              Folder
+   ├─ Main                             Script         (Main.server.luau)
+   ├─ Content                          Folder
+   │  └─ Scenarios                     ModuleScript   (Scenarios/init.luau) loads + validates
+   │     └─ Childhood                  ModuleScript   stage 1 scenarios
+   ├─ Lib                              Folder
+   │  ├─ Conditions, Consequences, MockDataStore,
+   │  │  ScenarioPicker, SessionLock, Validate        ModuleScripts
+   └─ Services                         Folder
+      ├─ DataService, LifeService, SettingsService, StatService   ModuleScripts
 
 StarterPlayer
 └─ StarterPlayerScripts
-   └─ Client                      (Folder)
-      ├─ Main                     (LocalScript)   src/client/Main.client.luau
-      └─ Controllers              (Folder)
-         └─ DataController        (ModuleScript)
-
-ReplicatedStorage.Remotes         (Folder, created at runtime by Net.Init. Do NOT create it yourself.)
+   └─ Client                           Folder
+      ├─ Main                          LocalScript    (Main.client.luau)
+      ├─ Controllers                   Folder
+      │  ├─ AudioController, DataController, DecisionController, GraphicsController,
+      │  │  HUDController, LoadingController, MenuController, NotificationController,
+      │  │  SettingsController, SettingsMenu, UIController            ModuleScripts
+      └─ UILib                         Folder
+         ├─ Anim, Components, Create, Layout, Theme                    ModuleScripts
 ```
 
-File naming (Rojo convention): `X.server.luau` → **Script**, `X.client.luau` → **LocalScript**, `X.luau` → **ModuleScript**, and a folder containing `init.luau` → a **ModuleScript** with children.
+At runtime the game also creates `ReplicatedStorage.Remotes` (server), the `CYL_*` ScreenGuis in PlayerGui and the `CYL_Music` / `CYL_SFX` SoundGroups (client). **Don't create those yourself.** All UI is generated by code; there are no hand-made GUIs.
 
-### Option A: Rojo (recommended)
-1. Install the Rojo Studio plugin and the Rojo CLI (7.x).
-2. In this folder run `rojo serve`.
-3. In Studio: Plugins → Rojo → **Connect**. Everything above appears automatically.
+File naming (Rojo): `X.server.luau` → **Script**, `X.client.luau` → **LocalScript**, `X.luau` → **ModuleScript**, and a folder containing `init.luau` → a **ModuleScript** with children.
 
-### Option B: manual
-1. Create each Folder / ModuleScript / Script / LocalScript exactly as in the tree above, with exactly those names.
-2. Paste each file's contents into the matching object.
-3. Don't create `Remotes`; the server makes it.
+**Option A, Rojo (recommended):** install the Rojo plugin + CLI 7.x, run `rojo serve` in this folder, then in Studio go to Plugins → Rojo → Connect.
+**Option B, manual:** create every object above with exactly those names and classes, and paste in each file's contents.
 
-### Studio settings
-- **Game Settings → Security → Enable Studio Access to API Services**: turn it on to test real saving. If it's off, the game warns in Output and uses an in-memory store, so everything still runs but nothing persists.
-- Publish the place first. DataStores need a published place.
+**Studio settings:** publish the place, then turn on Game Settings → Security → **Enable Studio Access to API Services** to test real saving. With it off, the game warns once and uses memory-only saving.
 
 ---
 
 ## 2. How the systems connect
 
 ```
- CLIENT (LocalScript Main)                     SERVER (Script Main)
- ─────────────────────────                     ───────────────────
- Controllers (Init → Start)                    Net.Init() creates ReplicatedStorage.Remotes
-   DataController ──Invoke "GetData"──────────► DataService  (Priority 0)
-        ▲                                          │  owns all saved data, session lock,
-        └──────── "DataSnapshot" event ◄───────────┤  autosave, replication
-                  (own data only, throttled)       │
-   (Phase 2 UI) ──Invoke "UpdateSettings"────────► SettingsService (validated by Lib/Validate)
-                ──Invoke "UpdatePrivacy"─────────►
-                                                 StatService ── DataService.Update(...)
-                                                 (later: LifeService, RevealService, ShopService…
-                                                  all change data only via DataService.Update)
+ CLIENT                                             SERVER
+ Main.client → Controllers (Init → Start)           Main.server → Net.Init() → Services (Init → Start)
+
+ LoadingController ─ waits for DataController ──┐
+ DataController ── Invoke GetData ─────────────►│ DataService   save/load, session lock, autosave,
+        ▲ ◄────── DataSnapshot (own data only) ─┤               sanitized replication
+ MenuController ── StartNewLife / ContinueLife ─►│ LifeService   slots, scenarios, choices
+                   DeleteLife                    │   ├ Content/Scenarios  (server-only text + effects)
+ DecisionController ─ GetScenario / MakeChoice ─►│   ├ Lib/ScenarioPicker (eligibility + weights)
+                                                 │   ├ Lib/Conditions     (flags/stats/traits gates)
+                                                 │   └ Lib/Consequences   (stats, money, flags, traits, chance)
+ SettingsController ─ UpdateSettings/Privacy ───►│ SettingsService (validated against a schema)
+ UIController   screens, scaling, modals          │ StatService   authoritative stat changes
+ HUDController  HUD + stats panel
 ```
 
-**Lifecycle.** Both `Main` scripts require every ModuleScript in their folder, sort by `.Priority` (lower runs first), call every `Init()` and then every `Start()` in its own thread. To add a system you drop a new ModuleScript into `Services` (server) or `Controllers` (client). No other file needs editing.
+**The decision loop.**
+1. `GetScenario` picks the next scenario: highest `Priority` first, otherwise a weighted pick. Weights are boosted by flags and traits from earlier choices, and scenarios you can't qualify for are skipped. The pick is saved as `life.CurrentScenario`, so reconnecting shows the same one.
+2. The client gets titles, choices and **arrow-only previews** (▲▲ Intelligence, ▼ Happiness, 🎲 Risky). It never sees exact numbers or chances.
+3. Locked choices are shown with their unlock hint (🔒 "Requires an athletic background"), so players know hidden paths exist.
+4. `MakeChoice(scenarioId, choiceId)` is checked against the saved pending scenario and re-checks locks. It then applies all effects in one atomic update:
+   - **Short term:** stat changes, with diminishing returns near 0 and 100 and trait multipliers on gains.
+   - **Long term:** flags (which unlock or close off later scenarios and choices) and traits (which make related gains worth more later).
+   - It also updates money, the story log and the decision log.
+5. Chance rolls use a per-life server seed plus the decision count, so leaving and rejoining can't reroll a bad outcome.
+6. After the last decision of a stage, the stats are snapshotted into `life.Reveals` and `StageCompleted` fires. This is where Life Reveal plugs in during Phase 5.
 
-**Networking rules (`Shared/Net`).**
-- Every remote is declared once in `RemoteDefinitions` with its rate limit. The server builds them; the client waits for them.
-- `Net.Handle` / `Net.Listen` wrap handlers in a per-player token-bucket rate limit and `pcall`, so spam returns `false, "RateLimited"` and a crashing handler returns `false, "ServerError"` without breaking the server.
-- Convention: handlers return `true, payload` or `false, reason`.
-- The client only **asks**. It never sends stat values, money, prices or outcomes. It sends ids (for example "I pick choice B"), and the server works out the result.
+**Responsive UI.** Every screen is laid out in virtual pixels on a 1280×720, 960×540 (phone landscape) or 540×960 (portrait) canvas, then scaled with `UIScale` to fill the safe area. Below 900 virtual pixels wide, layouts stack: the decision cards become a list, the HUD uses two rows and the menu becomes one column. Screens rebuild live when the device rotates or the UI-scale setting changes. All controls are buttons, so touch, mouse and gamepad all work. Sliders also have −/+ buttons.
 
-**Data rules (`DataService`).**
-- One profile per player, stored as `{ Data, Lock }` under key `Player_<UserId>`.
-- **Session lock:** loading claims the record for this server's `JobId` inside `UpdateAsync`. If a different live server holds it, the load retries with backoff. A lock older than 30 minutes is treated as a crashed server and taken over. Saves are cancelled if another server has taken the lock, so a stale server can never roll back newer data or duplicate items.
-- Autosave every 60 s (this also refreshes the lock). The game saves and releases when a player leaves, and `BindToClose` flushes everyone on shutdown.
-- Before every write the data is checked to be DataStore-safe (no NaN, functions or mixed keys).
-- `DataTemplate.Upgrade` runs version migrations and back-fills any new fields, so old saves keep working as features are added. A save from a *newer* version is refused rather than corrupted.
-- If loading fails after every retry, the player is kicked with a friendly message instead of playing on blank data that would overwrite their real save.
-- The client gets a **sanitized** snapshot: no RNG seed and no receipt history.
+**Input.**
+- **Mouse/touch:** tap a card to select it, then tap again or press Confirm.
+- **Keyboard:** `1`–`5` selects a choice, `Enter` confirms or continues.
+- **Gamepad:** D-pad to move, A to press, and B to cancel a selection or go back.
 
-**Stats (`StatMath` + `StatService`).** These are the 8 stats from the brief (0–100), with diminishing returns near the extremes so early choices keep mattering. Trait multipliers are supported. **Wealth** is computed from in-life net worth on a log scale ($10k → 50, $1M → 75, $100M → 100). There are two separate currencies: **Money** (in-life, resets every life) and **Coins** (shop currency that persists).
-
-**Save data shape.** The full commented schema is in `src/shared/Data/DataTemplate.luau`. It covers 3 save slots, life history, inventory, achievements, collectibles, daily/streak state, challenges, lifetime totals, settings, privacy and tutorial state. Each life stores age, stage, stats, money, assets, career, education, relationships, traits, story flags, decision log, story log, random events and Life Reveal snapshots.
+**Settings** apply instantly and save about 0.8 s after the last change (failed saves retry with the next change).
+- **Graphics:** Auto / Low / High controls shadows, post-effects and decorative motion. Auto picks Low on touch-only devices.
+- **Camera sensitivity:** saved and exposed for the game's own camera systems. Roblox doesn't let games change the default camera's mouse sensitivity.
 
 ---
 
-## 3. Testing
+## 3. Things you need to add in Studio
 
-Tests run the **real** `src/` files outside Roblox using [Lune](https://lune-org.github.io), with a fake Roblox API in `tests/harness.luau`:
+- **Sounds and music:** paste asset ids you have rights to (Toolbox → Audio) into `Shared/Data/SoundIds`. Empty ids are skipped, so the game is silent until then. The volume settings already control them.
+- **Credits:** edit `Config.Credits`.
+
+---
+
+## 4. Testing
 
 ```bash
 lune run tests/run.luau
 ```
 
-They cover table utilities, signals, stat maths, stage ages, schema and migrations, session locking and validation, plus server integration: booting `Main`, loading and saving players, snapshot sanitising, throttled replication, settings validation, rate limiting, handler error isolation, lock handoff between two servers, `BindToClose`, player data separation and the Studio fallback.
+```bash
+selene src
+```
 
-Lint: `selene src` (uses `roblox_lite.yml`, a small Roblox global list for offline use).
+Tests run the **real** `src/` files outside Roblox using [Lune](https://lune-org.github.io) and a fake Roblox API (`tests/harness.luau`). The client tests boot the real client against a real server harness, with remotes bridged and data deep-copied. They then click through the loading screen, menu, name entry, the full childhood, the stats panel, settings, credits, save slots and delete confirmation. This runs at desktop, phone-portrait, phone-landscape (including rotating mid-decision) and gamepad layouts, and the tests fail on any script error.
 
-**Not yet verified inside Roblox Studio itself.** The harness fakes Roblox, so run a Studio play-test too. You should see `[Server] CHOOSE YOUR LIFE started with 3 services` in Output and no errors.
+**What the harness can't check:** how things actually look, fonts, real tween timing, and real DataStore and text-filter behaviour. Please play-test in Studio. You should see:
+- Output shows `[Server] CHOOSE YOUR LIFE started with 4 services` and no red errors.
+- The loading screen leads to the main menu. **Play** leads to name entry, then to decision cards.
+- Use Studio's **device emulator** (Test → Device) to check a phone and a tablet.

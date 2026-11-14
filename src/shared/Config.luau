@@ -38,4 +38,20 @@ Config.DefaultRateLimit = { Rate = 4, Burst = 8 }
 -- ===== Replication =====
 Config.ReplicationThrottle = 0.15 -- min seconds between data pushes to a client
 
+-- ===== Credits (shown on the Credits screen; edit freely) =====
+Config.Credits = {
+	{ Heading = "Created by", Lines = { "The CHOOSE YOUR LIFE team" } },
+	{ Heading = "Game design & development", Lines = { "Built in Roblox Studio with Luau" } },
+	{ Heading = "Special thanks", Lines = { "Everyone who played, tested and shared their lives with friends" } },
+}
+
+-- ===== Loading tips =====
+Config.LoadingTips = {
+	"Every choice shapes your future. There are no wrong answers, only different lives.",
+	"Locked choices hint at hidden paths. Make different decisions to unlock them!",
+	"Traits you build as a child make similar choices pay off more later in life.",
+	"You have three save slots, so try living three completely different lives.",
+	"Some outcomes are risky. Look for the 🎲 on a choice.",
+}
+
 return Config

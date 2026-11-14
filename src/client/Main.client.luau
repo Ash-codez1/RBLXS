@@ -1,7 +1,8 @@
 --[[
 	Main  (StarterPlayerScripts.Client.Main)  — LocalScript
 	Client bootstrap: same Init/Start lifecycle as the server, using the
-	ModuleScripts in Client.Controllers (and Client.UI from Phase 2 on).
+	ModuleScripts in Client.Controllers. (Client.UILib holds shared UI
+	building blocks; it is required by controllers, not auto-started.)
 ]]
 
 local controllers = {}
@@ -24,7 +25,6 @@ local function collect(folder: Instance?)
 end
 
 collect(script.Parent:WaitForChild("Controllers"))
-collect(script.Parent:FindFirstChild("UI"))
 
 table.sort(controllers, function(a, b)
 	return (a.Priority or 100) < (b.Priority or 100)

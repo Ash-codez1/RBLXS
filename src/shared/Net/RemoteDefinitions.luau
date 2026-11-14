@@ -26,5 +26,17 @@ return {
 		UpdateSettings = { RateLimit = { Rate = 2, Burst = 4 } },
 		-- C->S: change who may see your stats/reveals/history. Args: privacyTable
 		UpdatePrivacy = { RateLimit = { Rate = 2, Burst = 4 } },
+
+		-- ===== Life (LifeService) =====
+		-- C->S: (slotId, name, overwrite) start a new life in a save slot.
+		StartNewLife = { RateLimit = { Rate = 0.5, Burst = 2 } },
+		-- C->S: (slotId) make an existing life the active one.
+		ContinueLife = { RateLimit = { Rate = 1, Burst = 3 } },
+		-- C->S: (slotId) permanently clear a save slot.
+		DeleteLife = { RateLimit = { Rate = 0.5, Burst = 2 } },
+		-- C->S: () -> scenario payload for the active life (same scenario until answered).
+		GetScenario = { RateLimit = { Rate = 2, Burst = 4 } },
+		-- C->S: (scenarioId, choiceId) -> outcome. The server computes every consequence.
+		MakeChoice = { RateLimit = { Rate = 2, Burst = 3 } },
 	},
 }
