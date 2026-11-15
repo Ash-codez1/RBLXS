@@ -9,7 +9,6 @@
 	HUDController.OpenStats()     shows the statistics panel
 ]]
 
-local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -21,6 +20,7 @@ local Traits = require(Shared.Data.Traits)
 local StatMath = require(Shared.Util.StatMath)
 local Careers = require(Shared.Data.Careers)
 local Assets = require(Shared.Data.Assets)
+local Budget = require(Shared.Util.Budget)
 
 local UILib = script.Parent.Parent:WaitForChild("UILib")
 local Theme = require(UILib.Theme)
@@ -40,7 +40,18 @@ HUDController.Content = nil :: Frame?
 local gameFrame: CanvasGroup
 local hud: Frame
 local refs: { [string]: any } = {}
-local statsModal: CanvasGroup? = nil
+local actions: { { Id: string, Icon: string, Order: number, OnClick: () -> () } } = {}
+
+--[[
+	Adds an icon button to the HUD (People, Lifestyle, Money, Stats...).
+	Call from a controller's Init. Buttons are named by Id.
+]]
+function HUDController.AddAction(action)
+	table.insert(actions, action)
+	table.sort(actions, function(a, b)
+		return a.Order < b.Order
+	end)
+end
 
 function HUDController.Occupation(life): string
 	if life.Career and life.Career.Id ~= "None" and Careers.Info[life.Career.Id] then
@@ -58,8 +69,19 @@ function HUDController.Occupation(life): string
 	return "Unemployed"
 end
 
+local COMPACT_WIDTH = 1260
 local function hudHeight(): number
-	return if UIController.GetVirtualSize().X < 1180 then 118 else 74
+	return if UIController.GetVirtualSize().X < COMPACT_WIDTH then 118 else 74
+end
+
+local function actionBar(parent)
+	local width = #actions * 50 + math.max(0, #actions - 1) * 8
+	local bar = Create("Frame", { Name = "Actions", BackgroundTransparency = 1, Size = UDim2.fromOffset(width, 50), AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Parent = parent })
+	Create.List(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Right).Parent = bar
+	for i, action in ipairs(actions) do
+		Components.Button({ Name = action.Id, Text = action.Icon, Style = if i == #actions then "Accent" else "Secondary", Size = UDim2.fromOffset(50, 50), TextSize = 24, LayoutOrder = i, Parent = bar, OnClick = action.OnClick })
+	end
+	return width
 end
 
 local function identityBlock(parent, width: number, order: number)
@@ -73,7 +95,7 @@ local function render()
 	Create.Clear(hud, true)
 	refs = {}
 	local size = UIController.GetVirtualSize()
-	local compact = size.X < 1180
+	local compact = size.X < COMPACT_WIDTH
 	local height = hudHeight()
 
 	hud.Size = UDim2.new(1, -24, 0, height)
@@ -94,11 +116,6 @@ local function render()
 			UIController.Show("Menu")
 		end })
 	end
-	local function statsButton(parent, order, iconOnly)
-		return Components.Button({ Name = "Stats", Text = if iconOnly then "📊" else "Stats", Icon = if iconOnly then nil else "📊", Style = "Accent", Size = UDim2.fromOffset(if iconOnly then 50 else 120, 50), TextSize = if iconOnly then 24 else 20, LayoutOrder = order, Parent = parent, OnClick = function()
-			HUDController.OpenStats()
-		end })
-	end
 	local function chip(parent, key, order)
 		refs[key] = Components.Chip({ Text = "", Height = 40, LayoutOrder = order, Parent = parent })
 		refs[key].Name = key
@@ -111,29 +128,27 @@ local function render()
 	if not compact then
 		local row = Create("Frame", { Name = "Row", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = hud })
 		Create.List(Enum.FillDirection.Horizontal, 14, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center).Parent = row
+		-- Widths budgeted for 1260+ virtual px: 50 + 220 + ~140 + 120 + 120 + ~250 + gaps + 224 (actions)
 		menuButton(row, 1)
-		identityBlock(row, 250, 2)
+		identityBlock(row, 220, 2)
 		chip(row, "Money", 3)
-		bar(row, "Happiness", 140, 4)
-		bar(row, "Health", 140, 5)
+		bar(row, "Happiness", 120, 4)
+		bar(row, "Health", 120, 5)
 		chip(row, "Occupation", 6)
-		local right = Create("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0, 120, 1, 0), AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Parent = hud })
-		statsButton(right, 1, false)
+		actionBar(hud)
 	else
 		local top = Create("Frame", { Name = "Top", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 50), Parent = hud })
 		menuButton(top, 1).Position = UDim2.fromOffset(0, 0)
-		local identity = identityBlock(top, size.X - 24 - 24 - 50 - 50 - 28, 2)
+		local barWidth = actionBar(top)
+		local identity = identityBlock(top, size.X - 24 - 24 - 50 - barWidth - 28, 2)
 		identity.Position = UDim2.fromOffset(64, 0)
-		local stats = statsButton(top, 3, true)
-		stats.AnchorPoint = Vector2.new(1, 0)
-		stats.Position = UDim2.fromScale(1, 0)
 
 		local bottom = Create("Frame", { Name = "Bottom", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 42), Position = UDim2.fromOffset(0, 56), Parent = hud })
 		Create.List(Enum.FillDirection.Horizontal, 12, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center).Parent = bottom
 		chip(bottom, "Money", 1)
-		local barWidth = if size.X < 700 then 110 else 140
-		bar(bottom, "Happiness", barWidth, 2)
-		bar(bottom, "Health", barWidth, 3)
+		local statWidth = if size.X < 700 then 110 else 140
+		bar(bottom, "Happiness", statWidth, 2)
+		bar(bottom, "Health", statWidth, 3)
 		if size.X >= 760 then
 			chip(bottom, "Occupation", 4)
 		end
@@ -170,59 +185,25 @@ end
 
 -- ===== Stats panel =====
 function HUDController.CloseStats()
-	if statsModal then
-		local modal = statsModal
-		statsModal = nil
-		ContextActionService:UnbindAction("CYL_CloseStats")
-		Anim.Fade(modal, false, 0.15)
-		task.delay(0.25, function()
-			modal:Destroy()
-		end)
+	local panel = UIController.CurrentPanel()
+	if panel and panel.Root.Name == "StatsModal" then
+		panel.Close()
 	end
 end
 
 function HUDController.OpenStats()
 	local life = DataController.GetActiveLife()
-	if not life or statsModal then
+	if not life then
 		return
 	end
-	local size = UIController.GetVirtualSize()
 	local narrow = UIController.IsNarrow()
-	local modal = Create("CanvasGroup", { Name = "StatsModal", BackgroundColor3 = Theme.Color.Black, BackgroundTransparency = 0.35, Size = UDim2.fromScale(1, 1), ZIndex = 30, Parent = UIController.GetOverlay() })
-	statsModal = modal
-	-- Clicking the dimmed area closes it.
-	local closer = Create("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Selectable = false, Parent = modal })
-	closer.Activated:Connect(HUDController.CloseStats)
-
-	local width = math.min(820, size.X - 24)
-	local height = math.min(660, size.Y - 24)
-	local panel = Components.Panel({ Size = UDim2.fromOffset(width, height), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Padding = 20, Parent = modal })
-
-	Create.Label({ Text = "📊  " .. life.Name .. "'s Life", FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H2, Size = UDim2.new(1, -60, 0, 36), TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false, Parent = panel })
 	local stage = LifeStages.Get(life.Stage)
-	Create.Label({
-		Text = ("Age %d · %s · Overall %d / 100 · %s"):format(life.Age, stage.DisplayName, math.floor(StatMath.Overall(life.Stats) + 0.5), Format.Money(life.Money)),
-		TextColor3 = Theme.Color.TextDim,
-		TextSize = Theme.TextSize.Small,
-		Position = UDim2.fromOffset(0, 38),
-		Size = UDim2.new(1, -60, 0, 22),
-		Parent = panel,
+	local handle = UIController.OpenPanel({
+		Name = "StatsModal",
+		Title = "📊  " .. life.Name .. "'s Life",
+		Subtitle = ("Age %d · %s · Overall %d / 100 · %s"):format(life.Age, stage.DisplayName, math.floor(StatMath.Overall(life.Stats) + 0.5), Format.Money(life.Money)),
 	})
-	local close = Components.Button({ Name = "Close", Text = "✕", Style = "Secondary", Size = UDim2.fromOffset(48, 48), AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Parent = panel, OnClick = HUDController.CloseStats })
-
-	local scroll = Create("ScrollingFrame", {
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(0, 72),
-		Size = UDim2.new(1, 0, 1, -72),
-		CanvasSize = UDim2.new(),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		ScrollBarThickness = 6,
-		Selectable = false,
-		Parent = panel,
-	})
-	Create.List(Enum.FillDirection.Vertical, 16).Parent = scroll
-	Create.Padding(4, 10, 10, 4).Parent = scroll
+	local scroll = handle.Scroll
 
 	local grid = Create("Frame", { Name = "Stats", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = scroll })
 	Create("UIGridLayout", { CellSize = if narrow then UDim2.new(1, 0, 0, 84) else UDim2.new(0.5, -10, 0, 84), CellPadding = UDim2.fromOffset(20, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
@@ -276,7 +257,7 @@ function HUDController.OpenStats()
 		"🎓  " .. (Careers.EducationNames[life.Education] or "None"),
 		"❤️  " .. relationship .. (if rel.Children > 0 then ("  ·  👶 %d %s"):format(rel.Children, if rel.Children == 1 then "child" else "children") else ""),
 		"🏠  " .. (if #owned > 0 then table.concat(owned, ", ") else "No property yet"),
-		"💰  Net worth " .. Format.Money(life.Money + Assets.TotalValue(life.Assets)),
+		"💰  Net worth " .. Format.Money(Budget.NetWorth(life)),
 	}
 	for i, fact in ipairs(facts) do
 		Create.Label({ Text = fact, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 10 + i, Parent = scroll })
@@ -289,20 +270,12 @@ function HUDController.OpenStats()
 		LayoutOrder = 20,
 		Parent = scroll,
 	})
-
-	Anim.Fade(modal, true, 0.2)
-	Anim.Pop(panel, 0.94)
-	UIController.Focus(close)
-	ContextActionService:BindActionAtPriority("CYL_CloseStats", function(_, state)
-		if state == Enum.UserInputState.Begin then
-			HUDController.CloseStats()
-		end
-		return Enum.ContextActionResult.Sink
-	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.ButtonB)
+	return handle
 end
 
 -- ===== Lifecycle =====
 function HUDController.Init()
+	HUDController.AddAction({ Id = "Stats", Icon = "📊", Order = 100, OnClick = HUDController.OpenStats })
 	gameFrame = UIController.NewScreen("Game", {
 		OnOpen = function()
 			render()
@@ -310,7 +283,7 @@ function HUDController.Init()
 			HUDController.Opened:Fire()
 		end,
 		OnClose = function()
-			HUDController.CloseStats()
+			UIController.ClosePanel()
 			HUDController.Closed:Fire()
 		end,
 	})

@@ -11,20 +11,35 @@ Built in Luau as a [Rojo](https://rojo.space) project, so every script is a plai
 | 1 | Architecture: bootstrap, networking, saving, stats, settings | ✅ Done |
 | 2 | Main menu, HUD, decision UI, settings, responsive layout (PC / mobile / tablet / console) | ✅ Done |
 | 3 | All six life stages (85 scenarios), 34 random events, branching, consequences, yearly income & ageing | ✅ Done |
-| 4 | Careers & relationships in depth (career events, promotions, partner/children interactions, finances) | ⏳ Next. Foundations already in: 21 careers with salaries and 5 levels, marriage/children, homes and cars |
-| 5 | Life Reveal: predictions, probabilities, cinematics, final reveal, Life History | ⬜ |
+| 4 | People & bonds, People/Lifestyle/Money panels, investments, loans & mortgages, a scenario for every career | ✅ Done |
+| 5 | Life Reveal: predictions, probabilities, cinematics, final reveal, Life History | ⏳ Next |
 | 6 | Multiplayer: shared scenarios, group voting, comparisons | ⬜ |
 | 7 | Shop, currency, inventory, monetisation | ⬜ |
 | 8 | World and environment, music and sound | ⬜ |
 | 9 | Achievements, daily rewards, challenges, leaderboards | ⬜ |
 | 10–11 | Security hardening, testing, polish | ⬜ (core saving/security done in Phase 1) |
 
-**78 automated tests pass** (`lune run tests/run.luau`). They include:
+**92 automated tests pass** (`lune run tests/run.luau`). They include:
 - a simulation of 400 random lives from age 5 to 85;
 - a full life played through the real UI;
 - UI click-throughs on desktop, phone portrait, phone landscape and gamepad.
 
 Nothing has been play-tested inside Roblox Studio yet; see §4.
+
+### People, lifestyle and money (Phase 4)
+
+- **Named people with bonds (0–100):** every life starts with two parents. Siblings, partners, children and friends join through choices, events and actions; an ex can come back.
+  - Bonds fade each year unless you make time for people.
+  - Close bonds raise Happiness and pull the Relationships stat up; being alone after 25 hurts.
+  - A partner bond below 15 can end the relationship, and ending a marriage costs money too.
+- **👥 People panel:** you get **2 actions between decisions**: *Spend time*, *Give a gift* (the cost scales with age) or *Talk* (sometimes a heart-to-heart). There are also *Meet new friends* and, from 18, *Look for love*. Chance-based actions use the life's seeded RNG, so retrying can't reroll them.
+- **🎯 Lifestyle focus:** Balanced, Career/School, Family, Health, Social or Save Money. It applies every simulated year; for example, Career focus means faster promotions and fading bonds, and Family focus means growing bonds and a slower career.
+- **💰 Money panel:**
+  - Net worth (cash + investments + property − debt) and this year's budget line by line. It uses `Shared/Util/Budget`, the same maths the server runs.
+  - Invest or withdraw from age 18. Markets average about 6% a year with swings, and crash 5% of the time.
+  - Repay loans early.
+- **Loans:** university adds a $27,000 student loan, and homes can be bought with a mortgage (deposit plus 25 years). Repayments come out every year.
+- **Save upgrade:** save format v2 adds people, focus, investments and loans. The v1→v2 migration turns old saves' partner, children and friend counts into named people.
 
 ### What a life looks like now
 
@@ -33,7 +48,7 @@ Nothing has been play-tested inside Roblox Studio yet; see §4.
 | Childhood | 5–12 | 6 | 11 | first friends, clubs, hidden talents, pocket money |
 | Teenage Years | 13–18 | 7 | 14 | friend groups, exams, first job, crushes, going viral, subjects, university plans |
 | Young Adulthood | 19–25 | 7 | 17 | university or work or travel, graduation, **career choice** (professional, creative, business or service), moving out, love |
-| Adulthood | 26–40 | 7 | 18 | promotions, marriage, children, buying homes, investing, career crossroads, job-specific dramas, **astronaut** |
+| Adulthood | 26–40 | 7 | 18 (+ multi-stage) | promotions, marriage, children, buying homes, investing, career crossroads, job-specific dramas, **astronaut** |
 | Middle Age | 41–60 | 6 | 15 | running a business, raising teens, old regrets, dreams, health, wealth, divorce or late love |
 | Retirement | 61–85 | 5 | 10 | retiring (or not), grandchildren, giving back, legacy, looking back |
 
@@ -45,7 +60,9 @@ Between decisions, years pass:
 - Strong performers can be promoted automatically.
 - Health declines after 50.
 
-After each decision there is a 28% chance of a **random life event**. There are 34 of them, rated Common, Uncommon, Rare or Legendary, and each is gated by your real situation: you can only be laid off if you have a job, and twins need a marriage. Legendary events, like a lottery win or a call from the space agency, happen in only a small fraction of lives.
+**Multi-stage "Life & Work" scenarios (28):** there is a dilemma for every career, such as a police stakeout, a teacher's struggling student, a chef facing a food critic, a startup pitch, an emergency in orbit and an esports world final. There are also relationship moments (a best friend's wedding, growing apart, work vs. family, lonely evenings, saying goodbye to a parent) and a mortgage-debt dilemma.
+
+After each decision there is a 28% chance of a **random life event**. There are 43 of them, rated Common, Uncommon, Rare or Legendary, and each is gated by your real situation: you can only be laid off if you have a job, and twins need a marriage. Legendary events, like a lottery win or a call from the space agency, happen in only a small fraction of lives.
 
 Results from the 400-life simulation with random choices:
 - 84 of 85 scenarios and 33 of 34 events appeared. The exception is the astronaut path, which needs a legendary event.
@@ -63,6 +80,7 @@ ReplicatedStorage
    ├─ Config                           ModuleScript   constants, credits, loading tips
    ├─ Data                             Folder
    │  ├─ Assets                        ModuleScript   homes/cars you can buy in a life
+   │  ├─ Lifestyle                     ModuleScript   lifestyle focus options
    │  ├─ Careers                       ModuleScript   21 careers, salaries, level titles, education
    │  ├─ DataTemplate                  ModuleScript   save schema, new life, migrations
    │  ├─ LifeStages                    ModuleScript   6 stages, ages, decisions per stage
@@ -73,7 +91,7 @@ ReplicatedStorage
    ├─ Net                              ModuleScript   (src/shared/Net/init.luau)
    │  └─ RemoteDefinitions             ModuleScript   every remote + rate limits
    └─ Util                             Folder
-      ├─ Format, Signal, StatMath, TableUtil          ModuleScripts
+      ├─ Budget, Format, People, Signal, StatMath, TableUtil   ModuleScripts
 
 ServerScriptService
 └─ Server                              Folder
@@ -83,8 +101,9 @@ ServerScriptService
    │  └─ Scenarios                     ModuleScript   (Scenarios/init.luau) loads + validates everything
    │     ├─ Childhood, Teen, YoungAdult,
    │     │  Adult, MiddleAge, Retirement  ModuleScripts  one per life stage
+   │     └─ LifeAndWork                ModuleScript   multi-stage career & relationship scenarios
    ├─ Lib                              Folder
-   │  ├─ Conditions, Consequences, MockDataStore, RandomEvents,
+   │  ├─ Actions, Conditions, Consequences, MockDataStore, RandomEvents,
    │  │  ScenarioPicker, SessionLock, Validate, Yearly ModuleScripts
    └─ Services                         Folder
       ├─ DataService, LifeService, SettingsService, StatService   ModuleScripts
@@ -94,8 +113,9 @@ StarterPlayer
    └─ Client                           Folder
       ├─ Main                          LocalScript    (Main.client.luau)
       ├─ Controllers                   Folder
-      │  ├─ AudioController, DataController, DecisionController, GraphicsController,
-      │  │  HUDController, LoadingController, MenuController, NotificationController,
+      │  ├─ AudioController, DataController, DecisionController, FinanceController,
+      │  │  GraphicsController, HUDController, LifestyleController, LoadingController,
+      │  │  MenuController, NotificationController, PeopleController,
       │  │  SettingsController, SettingsMenu, UIController            ModuleScripts
       └─ UILib                         Folder
          ├─ Anim, Components, Create, Layout, Theme                    ModuleScripts

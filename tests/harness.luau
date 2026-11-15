@@ -48,11 +48,18 @@ Harness.fakeEvent = fakeEvent
 local FakeRandom = {}
 FakeRandom.__index = FakeRandom
 function FakeRandom.new(seed: number?)
-	local state = math.floor(seed or (os.clock() * 1e6)) % 2147483647
+	-- Scramble the seed so small/consecutive seeds don't start with tiny values
+	-- (a weakness of plain Park-Miller), then warm up a few steps.
+	local raw = math.floor(seed or (os.clock() * 1e6))
+	local state = (raw * 2654435761 + 12345) % 2147483647
 	if state <= 0 then
 		state += 2147483646
 	end
-	return setmetatable({ _s = state }, FakeRandom)
+	local rng = setmetatable({ _s = state }, FakeRandom)
+	for _ = 1, 4 do
+		rng:_next()
+	end
+	return rng
 end
 function FakeRandom:_next()
 	self._s = (self._s * 48271) % 2147483647 -- Park-Miller

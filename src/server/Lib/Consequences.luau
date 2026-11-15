@@ -16,8 +16,15 @@
 		Promote      = 1,               -- move up career levels
 		Retire       = true,            -- stop working; pension from PeakSalary
 		Education    = "University",    -- raised only if higher than current
-		Partner      = true | false,    Married = true | false,
+		Partner      = true | false,    Married = true | false,   -- creates/ends named people
 		Children     = 1,               Friends = 2,
+		Meet         = "BestFriend",    -- a new person in a role (BestFriend promotes your closest friend)
+		Bond         = { Partner = 8, Child = 5, Friend = 3, Parent = 4, BestFriend = 6, Sibling = 3, All = 2 },
+		Loan         = { Kind = "Mortgage", Amount = 208000, Years = 25, Rate = 0.04 },
+		RepayLoan    = { Kind = "Student", Amount = 1500 },
+		InvestPercent = 0.25,           -- grow/shrink invested money
+		Farewell     = "Parent",        -- someone in that role passes away (gently, late in life)
+		Reunite      = true,            -- get back together with an ex (if single)
 		Assets       = { "House" },     RemoveAssets = { "Apartment" },
 		Story        = "Text. {name} is replaced.",
 		Outcomes     = { { Chance = 0.3, ...any of the above... }, ... },  -- at most one triggers
@@ -34,6 +41,8 @@ local Careers = require(Shared.Data.Careers)
 local Assets = require(Shared.Data.Assets)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
+local People = require(Shared.Util.People)
+local Budget = require(Shared.Util.Budget)
 
 local Consequences = {}
 
@@ -45,11 +54,46 @@ local function personalise(text: string?, life): string?
 end
 
 function Consequences.NetWorth(life): number
-	return life.Money + Assets.TotalValue(life.Assets)
+	return Budget.NetWorth(life)
 end
 
 function Consequences.SyncWealth(life)
-	life.Stats.Wealth = StatMath.WealthFromNetWorth(Consequences.NetWorth(life))
+	life.Stats.Wealth = StatMath.WealthFromNetWorth(math.max(0, Consequences.NetWorth(life)))
+end
+
+Consequences.LoanKinds = { Student = { Rate = 0.03, Years = 15, Title = "Student loan" }, Mortgage = { Rate = 0.04, Years = 25, Title = "Mortgage" } }
+
+-- Records a bond change for the outcome card (merged per person).
+local function noteBond(summary, person, delta: number)
+	if math.abs(delta) < 0.05 then
+		return
+	end
+	for _, entry in ipairs(summary.BondChanges) do
+		if entry.Id == person.Id then
+			entry.Delta += delta
+			return
+		end
+	end
+	table.insert(summary.BondChanges, { Id = person.Id, Name = person.Name, Role = person.Role, Delta = delta })
+end
+Consequences.NoteBond = noteBond
+
+function Consequences.ChangeBond(person, delta: number, summary)
+	noteBond(summary, person, People.ChangeBond(person, delta))
+end
+
+-- Ends the current relationship: partner becomes an Ex.
+function Consequences.EndRelationship(life, summary, text: string?)
+	local partner = People.Partner(life)
+	if not partner then
+		return
+	end
+	local wasMarried = partner.Married == true
+	partner.Role = "Ex"
+	partner.Married = nil
+	partner.Bond = math.min(partner.Bond, 25)
+	People.Sync(life)
+	table.insert(summary.LifeChanges, text or ((if wasMarried then "📄 Divorced from " else "💔 Broke up with ") .. partner.Name))
 end
 
 local function addStats(life, deltas, summary, useTraits: boolean)
@@ -170,41 +214,133 @@ local function applyBlock(life, block, summary)
 			end
 		end
 	end
-	local rel = life.Relationships
+	local rng = summary._rng
+	if block.Reunite and not People.Partner(life) then
+		local ex = People.ByRole(life, "Ex")[1]
+		if ex then
+			ex.Role = "Partner"
+			ex.Bond = math.max(ex.Bond, 60)
+			People.Sync(life)
+			table.insert(summary.LifeChanges, "❤️ Back together with " .. ex.Name)
+		end
+	end
 	if block.Partner ~= nil then
-		local had = rel.Partner == true
-		rel.Partner = block.Partner == true
-		if rel.Partner and not had then
-			table.insert(summary.LifeChanges, "❤️ In a relationship")
-		elseif had and not rel.Partner then
-			rel.Married = false
-			table.insert(summary.LifeChanges, "💔 Relationship ended")
+		local partner = People.Partner(life)
+		if block.Partner == true and not partner then
+			partner = People.Add(life, "Partner", rng)
+			table.insert(summary.LifeChanges, "❤️ In a relationship with " .. partner.Name)
+		elseif block.Partner == false and partner then
+			Consequences.EndRelationship(life, summary)
 		end
 	end
 	if block.Married ~= nil then
-		local was = rel.Married == true
-		rel.Married = block.Married == true
-		if rel.Married then
-			rel.Partner = true
-			if not was then
-				table.insert(summary.LifeChanges, "💍 Married")
+		local partner = People.Partner(life)
+		if block.Married == true then
+			if not partner then
+				partner = People.Add(life, "Partner", rng)
 			end
-		elseif was then
-			table.insert(summary.LifeChanges, "📄 Divorced")
+			if not partner.Married then
+				partner.Married = true
+				People.ChangeBond(partner, 10)
+				table.insert(summary.LifeChanges, "💍 Married " .. partner.Name)
+			end
+		elseif partner and partner.Married then
+			Consequences.EndRelationship(life, summary)
+		end
+		People.Sync(life)
+	end
+	if type(block.Children) == "number" and block.Children > 0 then
+		local names = {}
+		for _ = 1, math.min(block.Children, 12 - life.Relationships.Children) do
+			table.insert(names, People.Add(life, "Child", rng).Name)
+		end
+		if #names == 1 then
+			table.insert(summary.LifeChanges, "👶 Welcome, " .. names[1] .. "!")
+		elseif #names > 1 then
+			table.insert(summary.LifeChanges, "👶 Welcome, " .. table.concat(names, " & ") .. "!")
 		end
 	end
-	if type(block.Children) == "number" and block.Children ~= 0 then
-		local before = rel.Children
-		rel.Children = math.clamp(rel.Children + block.Children, 0, 12)
-		local added = rel.Children - before
-		if added == 1 then
-			table.insert(summary.LifeChanges, "👶 A new child")
-		elseif added > 1 then
-			table.insert(summary.LifeChanges, ("👶 %d new children"):format(added))
+	if type(block.Friends) == "number" and block.Friends ~= 0 then
+		if block.Friends > 0 then
+			for _ = 1, block.Friends do
+				if life.Relationships.Friends >= People.MaxFriends then
+					break
+				end
+				local friend = People.Add(life, "Friend", rng)
+				table.insert(summary.LifeChanges, "🙂 New friend: " .. friend.Name)
+			end
+		else
+			for _ = 1, -block.Friends do
+				local friends = People.ByRole(life, "Friend")
+				table.sort(friends, function(a, b)
+					return a.Bond < b.Bond
+				end)
+				if friends[1] then
+					table.insert(summary.LifeChanges, "👋 Lost touch with " .. friends[1].Name)
+					People.Remove(life, friends[1])
+				end
+			end
 		end
 	end
-	if type(block.Friends) == "number" then
-		rel.Friends = math.clamp(rel.Friends + block.Friends, 0, 99)
+	if block.Meet == "BestFriend" and #People.ByRole(life, "BestFriend") == 0 then
+		local friends = People.ByRole(life, "Friend")
+		table.sort(friends, function(a, b)
+			return a.Bond > b.Bond
+		end)
+		local best = friends[1] or People.Add(life, "Friend", rng)
+		best.Role = "BestFriend"
+		People.ChangeBond(best, 15)
+		People.Sync(life)
+		table.insert(summary.LifeChanges, "🫶 " .. best.Name .. " is now your best friend")
+	elseif block.Meet == "Sibling" then
+		local sibling = People.Add(life, "Sibling", rng)
+		sibling.BornAge = life.Age
+		table.insert(summary.LifeChanges, "🧒 A new sibling: " .. sibling.Name)
+	elseif block.Meet == "Friend" and life.Relationships.Friends < People.MaxFriends then
+		local friend = People.Add(life, "Friend", rng)
+		table.insert(summary.LifeChanges, "🙂 New friend: " .. friend.Name)
+	end
+	if type(block.InvestPercent) == "number" and (life.Investments or 0) > 0 then
+		local before = life.Investments
+		life.Investments = math.max(0, math.floor(before * (1 + block.InvestPercent)))
+		local change = life.Investments - before
+		table.insert(summary.LifeChanges, ("%s Investments %s%s"):format(if change >= 0 then "📈" else "📉", if change >= 0 then "+" else "", Format.Money(change)))
+	end
+	if type(block.Farewell) == "string" then
+		local person = People.ByRole(life, block.Farewell)[1]
+		if person then
+			People.Remove(life, person)
+			table.insert(summary.LifeChanges, "🕊️ Said goodbye to " .. person.Name)
+		end
+	end
+	if type(block.Bond) == "table" then
+		for _, person in ipairs(life.People) do
+			local delta = (block.Bond[person.Role] or 0) + (if person.Role ~= "Ex" then (block.Bond.All or 0) else 0)
+			if delta ~= 0 then
+				Consequences.ChangeBond(person, delta, summary)
+			end
+		end
+	end
+	if type(block.Loan) == "table" and Consequences.LoanKinds[block.Loan.Kind] then
+		local kind = Consequences.LoanKinds[block.Loan.Kind]
+		local rate = block.Loan.Rate or kind.Rate
+		local years = block.Loan.Years or kind.Years
+		table.insert(life.Loans, { Kind = block.Loan.Kind, Balance = block.Loan.Amount, Rate = rate, Payment = Budget.LoanPayment(block.Loan.Amount, rate, years) })
+		table.insert(summary.LifeChanges, "🏦 " .. kind.Title .. ": " .. Format.Money(block.Loan.Amount))
+	end
+	if type(block.RepayLoan) == "table" then
+		for i, loan in ipairs(life.Loans) do
+			if loan.Kind == block.RepayLoan.Kind then
+				local paid = math.min(loan.Balance, block.RepayLoan.Amount, life.Money)
+				loan.Balance -= paid
+				changeMoney(life, -paid, summary)
+				if loan.Balance <= 0 then
+					table.remove(life.Loans, i)
+					table.insert(summary.LifeChanges, "🎉 Paid off your " .. string.lower(Consequences.LoanKinds[loan.Kind].Title))
+				end
+				break
+			end
+		end
 	end
 	if block.Assets then
 		for _, id in ipairs(block.Assets) do
@@ -228,8 +364,10 @@ local function applyBlock(life, block, summary)
 	end
 end
 
-function Consequences.NewSummary()
+function Consequences.NewSummary(rng)
 	return {
+		_rng = rng,
+		BondChanges = {},
 		Applied = {},
 		MoneyDelta = 0,
 		FlagsAdded = {},
@@ -245,7 +383,7 @@ end
 	Returns summary = { Applied, MoneyDelta, FlagsAdded, TraitsGained, LifeChanges, Story, OutcomeTriggered }
 ]]
 function Consequences.Apply(life, effects, rng, logStory: boolean?)
-	local summary = Consequences.NewSummary()
+	local summary = Consequences.NewSummary(rng)
 	applyBlock(life, effects, summary)
 
 	if effects.Outcomes then
@@ -264,6 +402,7 @@ function Consequences.Apply(life, effects, rng, logStory: boolean?)
 	Consequences.SyncWealth(life)
 	summary.Story = table.concat(summary.StoryParts, " ")
 	summary.StoryParts = nil
+	summary._rng = nil
 	if logStory ~= false and summary.Story ~= "" then
 		table.insert(life.Story, { Age = life.Age, Text = summary.Story })
 		TableUtil.TrimArray(life.Story, Config.MaxStoryEntries)
@@ -328,6 +467,25 @@ function Consequences.Preview(effects)
 	end
 	if effects.Retire then
 		table.insert(tags, "🏖️ Retire")
+	end
+	if type(effects.Loan) == "table" then
+		table.insert(tags, "🏦 Loan " .. Format.Money(effects.Loan.Amount))
+	end
+	if type(effects.Bond) == "table" then
+		local up, down = false, false
+		for _, delta in pairs(effects.Bond) do
+			if delta > 0 then
+				up = true
+			elseif delta < 0 then
+				down = true
+			end
+		end
+		if up then
+			table.insert(tags, "💞 Closer bonds")
+		end
+		if down then
+			table.insert(tags, "💔 Strained bonds")
+		end
 	end
 	if type(effects.Money) == "number" and math.abs(effects.Money) >= 1000 then
 		table.insert(tags, (if effects.Money > 0 then "+" else "") .. Format.Money(effects.Money))

@@ -26,12 +26,22 @@
 		Assets     = { "House" },             -- owns all of these
 		AnyAssets  = { "House", "Mansion" },
 		NotAssets  = { "Mansion" },
+		-- people & finances
+		HasRole    = { "BestFriend" },        -- has someone in each of these roles
+		NotRole    = { "Partner" },
+		MinBond    = { Partner = 40 },         -- best bond among people in that role
+		MaxBond    = { Partner = 30 },         -- (role must exist for MaxBond to pass)
+		MinFriends = 2, MaxFriends = 0,
+		HasLoan    = "Mortgage", NoLoans = true,
+		MinInvestments = 10000,
+		Focus      = { "Career", "Money" },
 	}
 	Every field is optional; nil or {} always passes.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Careers = require(ReplicatedStorage:WaitForChild("Shared").Data.Careers)
+local People = require(ReplicatedStorage:WaitForChild("Shared").Util.People)
 
 local Conditions = {}
 
@@ -158,6 +168,69 @@ function Conditions.Check(life, requires): boolean
 				return false
 			end
 		end
+	end
+	if requires.HasRole then
+		for _, role in ipairs(requires.HasRole) do
+			if #People.ByRole(life, role) == 0 then
+				return false
+			end
+		end
+	end
+	if requires.NotRole then
+		for _, role in ipairs(requires.NotRole) do
+			if #People.ByRole(life, role) > 0 then
+				return false
+			end
+		end
+	end
+	local function bestBond(role)
+		local best = nil
+		for _, person in ipairs(People.ByRole(life, role)) do
+			best = math.max(best or 0, person.Bond)
+		end
+		return best
+	end
+	if requires.MinBond then
+		for role, min in pairs(requires.MinBond) do
+			local bond = bestBond(role)
+			if not bond or bond < min then
+				return false
+			end
+		end
+	end
+	if requires.MaxBond then
+		for role, max in pairs(requires.MaxBond) do
+			local bond = bestBond(role)
+			if not bond or bond > max then
+				return false
+			end
+		end
+	end
+	if requires.MinFriends and rel.Friends < requires.MinFriends then
+		return false
+	end
+	if requires.MaxFriends and rel.Friends > requires.MaxFriends then
+		return false
+	end
+	if requires.HasLoan then
+		local found = false
+		for _, loan in ipairs(life.Loans) do
+			if loan.Kind == requires.HasLoan then
+				found = true
+			end
+		end
+		if not found then
+			return false
+		end
+	end
+	if requires.NoLoans and #life.Loans > 0 then
+		return false
+	end
+	if requires.MinInvestments and (life.Investments or 0) < requires.MinInvestments then
+		return false
+	end
+	if requires.Focus and not table.find(requires.Focus, life.Focus) then
+		return false
 	end
 	return true
 end

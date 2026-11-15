@@ -25,6 +25,7 @@ local StatDefinitions = require(Shared.Data.StatDefinitions)
 local Traits = require(Shared.Data.Traits)
 local Careers = require(Shared.Data.Careers)
 local StatMath = require(Shared.Util.StatMath)
+local People = require(Shared.Util.People)
 
 local UILib = script.Parent.Parent:WaitForChild("UILib")
 local Theme = require(UILib.Theme)
@@ -533,6 +534,12 @@ local function addChangeChips(parent: Instance, result, animateIn: boolean?, ext
 	if result.MoneyDelta and result.MoneyDelta ~= 0 then
 		addChip("💰 " .. (if result.MoneyDelta > 0 then "+" else "") .. Format.Money(result.MoneyDelta), if result.MoneyDelta > 0 then Theme.Color.Positive else Theme.Color.Negative)
 	end
+	for _, change in ipairs(result.BondChanges or {}) do
+		if math.abs(change.Delta) >= 1 then
+			local role = People.Roles[change.Role]
+			addChip(("%s %s %s"):format(if role then role.Icon else "👤", change.Name, Format.Signed(change.Delta)), if change.Delta > 0 then Theme.Color.Positive else Theme.Color.Negative)
+		end
+	end
 	for _, item in ipairs(extra or {}) do
 		addChip(item.Text, item.Color)
 	end
@@ -796,7 +803,8 @@ function confirmChoice()
 	local ok, result = invoke("MakeChoice", scenario.Id, choice.Id)
 	busy = false
 	if not ok then
-		if result == "WrongScenario" or result == "NoLife" then
+		if result == "WrongScenario" or result == "NoLife" or result == "ChoiceLocked" then
+			-- Our view was out of date (e.g. money was spent in the Money panel).
 			DecisionController.Next()
 		else
 			NotificationController.Notify({ Title = "Couldn't make that choice", Text = tostring(result), Kind = "Error" })
@@ -837,6 +845,28 @@ function DecisionController.Next()
 		showLifeComplete()
 	else
 		showError(payload)
+	end
+end
+
+-- Re-fetches the current scenario so locked/unlocked choices reflect the
+-- latest money, people and stats (called after People/Money panel actions).
+function DecisionController.Refresh()
+	if mode ~= "Scenario" or busy or not scenario then
+		return
+	end
+	local keep = selected and selected.Id
+	local ok, payload = invoke("GetScenario")
+	if ok and mode == "Scenario" and UIController.Current() == "Game" then
+		scenario = payload
+		selected = nil
+		renderScenario(false)
+		if keep then
+			for _, choice in ipairs(payload.Choices) do
+				if choice.Id == keep and not choice.Locked then
+					selectChoice(choice)
+				end
+			end
+		end
 	end
 end
 

@@ -228,6 +228,27 @@ return function(H)
 			end)
 			local steps, finished = 0, false
 			while steps < 60 do
+				-- Behave a bit like a player: sometimes use People/Money actions and change focus.
+				local life = DS.Get(player).Slots.Slot1
+				if rng:NextNumber() < 0.5 and #life.People > 0 then
+					local person = life.People[rng:NextInteger(1, #life.People)]
+					LS.Interact(player, person.Id, ({ "Time", "Gift", "Talk" })[rng:NextInteger(1, 3)])
+				end
+				if rng:NextNumber() < 0.15 then
+					LS.MeetPeople(player, if rng:NextNumber() < 0.5 then "Friend" else "Love")
+				end
+				if rng:NextNumber() < 0.1 then
+					LS.SetFocus(player, ({ "Balanced", "Career", "Family", "Health", "Social", "Money" })[rng:NextInteger(1, 6)])
+				end
+				if life.Age >= 18 and life.Money > 1000 and rng:NextNumber() < 0.2 then
+					LS.Invest(player, math.floor(life.Money * rng:NextNumber()))
+				end
+				if (life.Investments or 0) > 1000 and rng:NextNumber() < 0.1 then
+					LS.Withdraw(player, math.floor(life.Investments * rng:NextNumber()))
+				end
+				if #life.Loans > 0 and life.Money > 1000 and rng:NextNumber() < 0.1 then
+					LS.RepayLoan(player, 1, math.floor(math.min(life.Money, life.Loans[1].Balance)))
+				end
 				local okS, sc = LS.GetScenario(player)
 				if not okS then
 					table.insert(problems, ("life %d: GetScenario failed (%s) at age %d stage %d"):format(i, tostring(sc), DS.Get(player).Slots.Slot1.Age, DS.Get(player).Slots.Slot1.Stage))
@@ -265,6 +286,18 @@ return function(H)
 				ok(value >= 0 and value <= 100, stat .. " in range")
 			end
 			ok(life.Money >= 0 and life.Money % 1 == 0, "money is a non-negative integer")
+			ok((life.Investments or 0) >= 0, "investments never negative")
+			for _, person in ipairs(life.People) do
+				ok(person.Bond >= 0 and person.Bond <= 100, "bond in range")
+			end
+			local partners = 0
+			for _, person in ipairs(life.People) do
+				if person.Role == "Partner" then
+					partners += 1
+				end
+			end
+			ok(partners <= 1, "at most one partner at a time")
+			eq(life.Relationships.Partner, partners == 1, "Relationships counters in sync")
 			ok(TU.IsSerializable(data), "serializable")
 			local size = #serde.encode("json", data)
 			largest = math.max(largest, size)
@@ -427,7 +460,9 @@ return function(H)
 		eq(r.Income, math.floor(CR.SalaryAt("Teacher", 1) * rate - Yearly.RentCost) * 2, "salary savings minus rent")
 		eq(life.Career.YearsInRole, 2)
 		life.Assets.Apartment = true -- homeowners pay no rent
-		life.Relationships.Children = 1
+		local People = h.require("ReplicatedStorage.Shared.Util.People")
+		life.Age = 28
+		People.Add(life, "Child", rng) -- born this year: costs money until 18
 		local before = life.Money
 		Yearly.Advance(life, 28, 1, rng, Consequences.NewSummary())
 		eq(life.Money - before, math.floor(CR.SalaryAt("Teacher", 1) * rate - Yearly.ChildCost))
@@ -436,8 +471,7 @@ return function(H)
 		life.Money = 3000
 		Yearly.Advance(life, 30, 2, rng, Consequences.NewSummary())
 		eq(life.Money, 0)
-		-- Retired: pension from peak salary.
-		life.Relationships.Children = 0
+		-- Retired: pension from peak salary (the child is grown up by 70).
 		life.Flags.Retired = true
 		life.PeakSalary = 100000
 		Yearly.Advance(life, 70, 1, rng, Consequences.NewSummary())
@@ -497,6 +531,243 @@ return function(H)
 		ok(legendary / 20000 < 0.005, "legendary < 0.5% of decisions (" .. legendary .. ")")
 	end)
 	h.close()
+
+	section("People, bonds, loans, investments, lifestyle (Phase 4)")
+	local h4 = bootServer({ JobId = "phase4" })
+	local DT4 = h4.require("ReplicatedStorage.Shared.Data.DataTemplate")
+	local People = h4.require("ReplicatedStorage.Shared.Util.People")
+	local Budget = h4.require("ReplicatedStorage.Shared.Util.Budget")
+	local Cq = h4.require("ServerScriptService.Server.Lib.Consequences")
+	local Yr = h4.require("ServerScriptService.Server.Lib.Yearly")
+	local Act = h4.require("ServerScriptService.Server.Lib.Actions")
+	local LS4 = h4.require("ServerScriptService.Server.Services.LifeService")
+	local DS4 = h4.require("ServerScriptService.Server.Services.DataService")
+	local r4 = H.Random.new(77)
+
+	test("Every new life starts with two named parents", function()
+		local life = DT4.NewLife("Robin", 42)
+		local parents = People.ByRole(life, "Parent")
+		eq(#parents, 2)
+		ok(parents[1].Name ~= parents[2].Name and parents[1].Name ~= "Robin", "distinct names")
+		eq(DT4.NewLife("Robin", 42).People[1].Name, parents[1].Name, "names are deterministic per seed")
+	end)
+
+	test("Partner, marriage, children, friends and exes are real people", function()
+		local life = DT4.NewLife("Robin", 1)
+		life.Age = 28
+		local sum = Cq.Apply(life, { Partner = true }, r4)
+		local partner = People.Partner(life)
+		ok(partner and life.Relationships.Partner, "partner created")
+		ok(sum.LifeChanges[1]:find(partner.Name), "named in life changes")
+		Cq.Apply(life, { Married = true, Children = 2, Friends = 2 }, r4)
+		eq(life.Relationships.Married, true)
+		eq(#People.ByRole(life, "Child"), 2)
+		eq(life.Relationships.Children, 2)
+		eq(life.Relationships.Friends, 2)
+		Cq.Apply(life, { Meet = "BestFriend" }, r4)
+		eq(#People.ByRole(life, "BestFriend"), 1)
+		eq(life.Relationships.Friends, 2, "best friend promoted from friends")
+		Cq.Apply(life, { Friends = -1 }, r4)
+		eq(life.Relationships.Friends, 1)
+		Cq.Apply(life, { Partner = false }, r4)
+		eq(People.Partner(life), nil)
+		eq(#People.ByRole(life, "Ex"), 1)
+		eq(life.Relationships.Married, false)
+		Cq.Apply(life, { Reunite = true }, r4)
+		eq(People.Partner(life).Name, partner.Name, "reunited with the ex")
+		Cq.Apply(life, { Farewell = "Parent" }, r4)
+		eq(#People.ByRole(life, "Parent"), 1)
+	end)
+
+	test("Bond effects report per-person changes and clamp to 0–100", function()
+		local life = DT4.NewLife("Robin", 1)
+		local sum = Cq.Apply(life, { Bond = { Parent = 50 } }, r4)
+		eq(#sum.BondChanges, 2)
+		for _, p in ipairs(People.ByRole(life, "Parent")) do
+			eq(p.Bond, 100)
+		end
+		Cq.Apply(life, { Bond = { All = -500 } }, r4)
+		eq(People.ByRole(life, "Parent")[1].Bond, 0)
+	end)
+
+	test("Bonds fade with time; a Family focus makes them grow", function()
+		local life = DT4.NewLife("Robin", 1)
+		life.Age = 30
+		Cq.Apply(life, { Married = true }, r4)
+		local partner = People.Partner(life)
+		local start = partner.Bond
+		Yr.Advance(life, 30, 5, r4, Cq.NewSummary())
+		ok(partner.Bond < start, "partner bond fades when neglected")
+		life.Focus = "Family"
+		local mid = partner.Bond
+		Yr.Advance(life, 35, 5, r4, Cq.NewSummary())
+		ok(partner.Bond > mid, "family focus grows bonds")
+	end)
+
+	test("A badly neglected relationship can end on its own", function()
+		local ended = 0
+		for i = 1, 40 do
+			local life = DT4.NewLife("Robin", i)
+			life.Age = 30
+			Cq.Apply(life, { Partner = true }, r4)
+			People.Partner(life).Bond = 5
+			local s4 = Cq.NewSummary()
+			Yr.Advance(life, 30, 4, H.Random.new(i), s4)
+			if not People.Partner(life) then
+				ended += 1
+			end
+		end
+		ok(ended > 10 and ended < 40, "some (not all) neglected couples split: " .. ended)
+	end)
+
+	test("Close bonds make you happier over the years", function()
+		local function happinessAfter(bond)
+			local life = DT4.NewLife("Robin", 3)
+			life.Age = 30
+			Cq.Apply(life, { Married = true, Children = 1 }, r4)
+			for _, p in ipairs(life.People) do
+				p.Bond = bond
+			end
+			life.Focus = "Family" -- keep bonds steady
+			Yr.Advance(life, 30, 6, H.Random.new(1), Cq.NewSummary())
+			return life.Stats.Happiness
+		end
+		ok(happinessAfter(95) > happinessAfter(10) + 3, "high bonds → happier")
+	end)
+
+	test("Loans: amortised payments, early repayment, debt counts against net worth", function()
+		local life = DT4.NewLife("Robin", 1)
+		life.Age = 30
+		life.Money = 60000
+		Cq.Apply(life, { Assets = { "House" }, Money = -52000, Loan = { Kind = "Mortgage", Amount = 208000 } }, r4)
+		eq(#life.Loans, 1)
+		local loan = life.Loans[1]
+		eq(loan.Payment, Budget.LoanPayment(208000, 0.04, 25))
+		eq(Budget.NetWorth(life), 8000 + 260000 - 208000)
+		life.Career = { Id = "Doctor", Level = 3, YearsInRole = 0 }
+		Yr.Advance(life, 30, 25, r4, Cq.NewSummary())
+		eq(#life.Loans, 0, "a mortgage is paid off after its term")
+		-- Repay effect & action
+		Cq.Apply(life, { Loan = { Kind = "Student", Amount = 5000 } }, r4)
+		life.Money = 10000
+		local okR, res = Act.RepayLoan(life, 1, 5000)
+		ok(okR and res.PaidOff, "repaid in full")
+		eq(life.Money, 5000)
+		eq(select(2, Act.RepayLoan(life, 1, 100)), "BadLoan")
+	end)
+
+	test("Investing is validated and the market moves over time", function()
+		local life = DT4.NewLife("Robin", 1)
+		life.Age = 16
+		life.Money = 10000
+		eq(select(2, Act.Invest(life, 100)), "TooYoung")
+		life.Age = 30
+		eq(select(2, Act.Invest(life, -5)), "BadAmount")
+		eq(select(2, Act.Invest(life, 1.5)), "BadAmount")
+		eq(select(2, Act.Invest(life, 20000)), "BadAmount")
+		eq(select(2, Act.Invest(life, 0 / 0)), "BadAmount")
+		ok((Act.Invest(life, 10000)))
+		eq(life.Money, 0)
+		eq(life.Investments, 10000)
+		eq(select(2, Act.Withdraw(life, 10001)), "BadAmount")
+		local total = 0
+		for i = 1, 200 do
+			local l = DT4.NewLife("I", i)
+			l.Investments = 10000
+			Yr.Advance(l, 30, 10, H.Random.new(i), Cq.NewSummary())
+			total += l.Investments
+		end
+		ok(total / 200 > 13000, "average 10-year growth is positive: " .. math.floor(total / 200))
+		Cq.Apply(life, { InvestPercent = -0.5 }, r4)
+		eq(life.Investments, 5000)
+	end)
+
+	test("People actions: two per decision, validated, gifts cost money", function()
+		local life = DT4.NewLife("Robin", 1)
+		life.Age = 10
+		life.Money = 15
+		local parent = People.ByRole(life, "Parent")[1]
+		local before = parent.Bond
+		eq(Act.ActionsLeft(life), 2)
+		ok((Act.Interact(life, parent.Id, "Time", r4)))
+		ok(parent.Bond > before, "bond grows")
+		ok((Act.Interact(life, parent.Id, "Gift", r4)))
+		eq(life.Money, 5, "gift cost $10 at age 10")
+		eq(select(2, Act.Interact(life, parent.Id, "Talk", r4)), "NoActionsLeft")
+		table.insert(life.Decisions, { S = "x", C = "y" }) -- a decision refreshes actions
+		eq(Act.ActionsLeft(life), 2)
+		eq(select(2, Act.Interact(life, parent.Id, "Gift", r4)), "NotEnoughMoney")
+		eq(select(2, Act.Interact(life, "p999", "Time", r4)), "NoSuchPerson")
+		eq(select(2, Act.Interact(life, parent.Id, "Hug", r4)), "BadAction")
+		eq(select(2, Act.Meet(life, "Love", r4)), "TooYoung")
+		life.Age = 25
+		Cq.Apply(life, { Partner = true }, r4)
+		eq(select(2, Act.Meet(life, "Love", r4)), "AlreadyTaken")
+	end)
+
+	test("Lifestyle focus is validated and shapes the years", function()
+		local life = DT4.NewLife("Robin", 1)
+		life.Age = 12
+		eq(select(2, Act.SetFocus(life, "Money")), "TooYoung")
+		eq(select(2, Act.SetFocus(life, "Partying")), "BadFocus")
+		local healthy = DT4.NewLife("A", 5)
+		local balanced = DT4.NewLife("B", 5)
+		healthy.Focus = "Health"
+		Yr.Advance(healthy, 30, 8, H.Random.new(1), Cq.NewSummary())
+		Yr.Advance(balanced, 30, 8, H.Random.new(1), Cq.NewSummary())
+		ok(healthy.Stats.Health > balanced.Stats.Health + 5, "health focus pays off")
+		local saver = DT4.NewLife("C", 5)
+		saver.Career = { Id = "Teacher", Level = 2, YearsInRole = 0 }
+		local spender = DT4.NewLife("D", 5)
+		spender.Career = { Id = "Teacher", Level = 2, YearsInRole = 0 }
+		saver.Focus = "Money"
+		Yr.Advance(saver, 30, 5, H.Random.new(2), Cq.NewSummary())
+		Yr.Advance(spender, 30, 5, H.Random.new(2), Cq.NewSummary())
+		ok(saver.Money > spender.Money, "money focus saves more")
+	end)
+
+	test("Remotes validate People/Money arguments", function()
+		local player = h4.addPlayer(990, "Remote")
+		task.wait(0.05)
+		DS4.Update(player, function(d)
+			d.Slots.Slot1 = DT4.NewLife("Remote", 5)
+			d.ActiveSlot = "Slot1"
+		end)
+		local invoke = function(name, ...)
+			return h4.remote(name).OnServerInvoke(player, ...)
+		end
+		eq(select(2, invoke("Interact", { bad = true }, "Time")), "BadArgs")
+		eq(select(2, invoke("Interact", "p1", "Kiss")), "BadArgs")
+		eq(select(2, invoke("MeetPeople", "Enemy")), "BadArgs")
+		eq(select(2, invoke("SetFocus", "../x")), "BadArgs")
+		eq(select(2, invoke("Invest", "100")), "TooYoung")
+		local okI, res = invoke("Interact", "p1", "Time")
+		eq(okI, true)
+		ok(res.Text and res.ActionsLeft == 1, "result returned")
+		eq(DS4.Get(player).Slots.Slot1.ActionsUsed, 1)
+		eq(LS4.Interact ~= nil, true)
+	end)
+
+	test("Old (v1) saves upgrade: partners and children become people", function()
+		local old = {
+			Version = 1,
+			Coins = 5,
+			Slots = { Slot1 = { Name = "Legacy", Age = 40, Seed = 9, Stage = 4, Relationships = { Partner = true, Married = true, Children = 2, Friends = 1 }, Stats = {} } },
+		}
+		local upgraded = DT4.Upgrade(old)
+		ok(upgraded, "upgraded")
+		eq(upgraded.Version, DT4.CurrentVersion)
+		local life = upgraded.Slots.Slot1
+		eq(#People.ByRole(life, "Parent"), 2)
+		eq(#People.ByRole(life, "Child"), 2)
+		eq(#People.ByRole(life, "Friend"), 1)
+		local partner = People.Partner(life)
+		ok(partner and partner.Married, "married partner kept")
+		eq(life.Focus, "Balanced")
+		eq(life.Investments, 0)
+		ok(type(life.Loans) == "table")
+	end)
+	h4.close()
 
 	server.close()
 end

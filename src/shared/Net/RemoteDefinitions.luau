@@ -38,5 +38,18 @@ return {
 		GetScenario = { RateLimit = { Rate = 2, Burst = 4 } },
 		-- C->S: (scenarioId, choiceId) -> outcome. The server computes every consequence.
 		MakeChoice = { RateLimit = { Rate = 2, Burst = 3 } },
+
+		-- ===== People, lifestyle & money (LifeService → Lib/Actions) =====
+		-- C->S: (personId, "Time"|"Gift"|"Talk")
+		Interact = { RateLimit = { Rate = 3, Burst = 5 } },
+		-- C->S: ("Friend"|"Love") try to meet someone new
+		MeetPeople = { RateLimit = { Rate = 2, Burst = 4 } },
+		-- C->S: (focusId) lifestyle focus
+		SetFocus = { RateLimit = { Rate = 2, Burst = 4 } },
+		-- C->S: (amount) move cash into / out of investments
+		Invest = { RateLimit = { Rate = 3, Burst = 5 } },
+		Withdraw = { RateLimit = { Rate = 3, Burst = 5 } },
+		-- C->S: (loanIndex, amount) pay a loan down early
+		RepayLoan = { RateLimit = { Rate = 3, Burst = 5 } },
 	},
 }

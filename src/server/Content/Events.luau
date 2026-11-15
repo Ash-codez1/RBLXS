@@ -17,7 +17,7 @@ return {
 	{ Id = "E_ArtPrize", Title = "Prize Winner", Icon = "🏆", Rarity = "Uncommon", Stages = { KID }, Requires = { AnyFlags = { "Creative", "WritingTalent", "MusicTalent" } },
 		Effects = { Stats = { Happiness = 6, Reputation = 5 }, Flags = { "AwardWinner" }, Story = "{name}'s work won first prize in a regional young creators' competition!" } },
 	{ Id = "E_NewSibling", Title = "A New Sibling", Icon = "🍼", Rarity = "Uncommon", Stages = { KID },
-		Effects = { Stats = { Relationships = 5, Happiness = 2 }, Flags = { "HasSibling" }, Story = "The family grew: {name} became a big sibling." } },
+		Effects = { Stats = { Relationships = 5, Happiness = 2 }, Flags = { "HasSibling" }, Meet = "Sibling", Story = "The family grew: {name} became a big sibling." } },
 	{ Id = "E_PuppyKid", Title = "A Furry Friend", Icon = "🐶", Rarity = "Common", Stages = { KID },
 		Effects = { Stats = { Happiness = 7, Health = 2 }, Flags = { "ChildhoodPet" }, Story = "The family adopted a scruffy puppy who followed {name} everywhere." } },
 
@@ -32,7 +32,7 @@ return {
 	{ Id = "E_SportsInjury", Title = "Injury Setback", Icon = "🦵", Rarity = "Uncommon", Stages = { TEEN, YOUNG }, Requires = { AnyFlags = { "Athlete", "Scouted" } },
 		Effects = { Stats = { Health = -8, Happiness = -5 }, Flags = { "OldInjury" }, Story = "{name} tore a ligament mid-match and spent months recovering." } },
 	{ Id = "E_BestFriendMoves", Title = "Goodbye, Best Friend", Icon = "👋", Rarity = "Common", Stages = { TEEN },
-		Effects = { Stats = { Relationships = -4, Happiness = -4 }, Story = "{name}'s best friend moved to another country. They promised to video call every week." } },
+		Effects = { Stats = { Relationships = -4, Happiness = -4 }, Bond = { BestFriend = -15, Friend = -8 }, Story = "{name}'s best friend moved to another country. They promised to video call every week." } },
 
 	-- ===== Young adulthood =====
 	{ Id = "E_Inheritance", Title = "An Unexpected Inheritance", Icon = "📜", Rarity = "Rare", Stages = { YOUNG, ADULT, MID },
@@ -79,7 +79,27 @@ return {
 		Boost = { Stats = { Health = { Max = 40, Multiplier = 2.5 } } },
 		Effects = { Stats = { Health = -10, Happiness = -5 }, Flags = { "HealthScare" }, Story = "A routine check-up found something worrying. {name} spent weeks in and out of hospital." } },
 	{ Id = "E_Reunion", Title = "Old Friend Returns", Icon = "🤗", Rarity = "Common", Stages = { ADULT, MID, OLD },
-		Effects = { Stats = { Relationships = 6, Happiness = 5 }, Friends = 1, Story = "An old school friend tracked {name} down online. They picked up exactly where they left off." } },
+		Effects = { Stats = { Relationships = 6, Happiness = 5 }, Meet = "Friend", Story = "An old school friend tracked {name} down online. They picked up exactly where they left off." } },
+
+	-- ===== People, work & money (Phase 4) =====
+	{ Id = "E_PartnerNeglected", Title = "Feeling Neglected", Icon = "💬", Rarity = "Common", Stages = { YOUNG, ADULT, MID, OLD }, Requires = { Partner = true, MaxBond = { Partner = 35 } },
+		Effects = { Bond = { Partner = -6 }, Stats = { Happiness = -5 }, Story = "{name}'s partner said they feel invisible lately. It stung, because it was true." } },
+	{ Id = "E_FriendMovesAway", Title = "A Friend Moves Away", Icon = "📦", Rarity = "Common", Stages = { TEEN, YOUNG, ADULT, MID }, Requires = { MinFriends = 2 },
+		Effects = { Friends = -1, Stats = { Happiness = -3 }, Story = "One of {name}'s friends moved to the other side of the world." } },
+	{ Id = "E_ChildAward", Title = "Proud Parent", Icon = "🥇", Rarity = "Uncommon", Stages = { ADULT, MID }, Requires = { MinChildren = 1 },
+		Effects = { Bond = { Child = 8 }, Stats = { Happiness = 7 }, Story = "{name}'s child won an award at school. They cried in the audience." } },
+	{ Id = "E_PayRise", Title = "Pay Rise", Icon = "💵", Rarity = "Common", Stages = { YOUNG, ADULT, MID }, Requires = { HasCareer = true },
+		Effects = { Money = 3000, Stats = { Happiness = 3, Career = 3 }, Story = "{name}'s hard work was rewarded with a pay rise." } },
+	{ Id = "E_CareerAward", Title = "Employee of the Year", Icon = "🏅", Rarity = "Uncommon", Stages = { YOUNG, ADULT, MID }, Requires = { HasCareer = true, MinStats = { Career = 55 } },
+		Effects = { Stats = { Reputation = 6, Career = 5, Happiness = 4 }, Story = "{name} was named employee of the year." } },
+	{ Id = "E_MarketBoom", Title = "Market Boom", Icon = "📈", Rarity = "Uncommon", Stages = { YOUNG, ADULT, MID, OLD }, Requires = { MinInvestments = 5000 },
+		Effects = { InvestPercent = 0.4, Stats = { Happiness = 4 }, Story = "Stock markets soared and {name}'s investments jumped." } },
+	{ Id = "E_MarketCrash", Title = "Market Crash", Icon = "💥", Rarity = "Uncommon", Stages = { YOUNG, ADULT, MID, OLD }, Requires = { MinInvestments = 5000 },
+		Effects = { InvestPercent = -0.35, Stats = { Happiness = -5 }, Story = "A global crash hit the markets. {name}'s investments took a beating." } },
+	{ Id = "E_SiblingNews", Title = "Big News From Your Sibling", Icon = "📣", Rarity = "Common", Stages = { YOUNG, ADULT, MID }, Requires = { HasRole = { "Sibling" } },
+		Effects = { Bond = { Sibling = 8 }, Stats = { Happiness = 4 }, Story = "{name}'s sibling called with amazing news, and wanted {name} to be the first to know." } },
+	{ Id = "E_ExReturns", Title = "An Old Flame", Icon = "🔥", Rarity = "Uncommon", Stages = { ADULT, MID }, Requires = { HasRole = { "Ex" }, Partner = false },
+		Effects = { Reunite = true, Stats = { Happiness = 7 }, Story = "{name} bumped into an ex. Years had passed, and this time it felt right." } },
 
 	-- ===== Retirement =====
 	{ Id = "E_Grandchild", Title = "A Grandchild!", Icon = "👶", Rarity = "Common", Stages = { MID, OLD }, Requires = { MinChildren = 1 },

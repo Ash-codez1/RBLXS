@@ -225,6 +225,35 @@ return function(H)
 		eq(app.gui.CYL_Overlay.Root:FindFirstChild("StatsModal"), nil, "closed")
 	end)
 
+	test("People panel lists your parents and actions change bonds on the server", function()
+		app.click(app.screen("Game").HUD:FindFirstChild("People", true), 0.2)
+		local modal = app.gui.CYL_Overlay.Root:FindFirstChild("PeopleModal")
+		ok(modal, "people panel open")
+		local life = app.data().Slots.Slot1
+		local parent = life.People[1]
+		ok(app.label(modal, parent.Name), "parent listed by name")
+		ok(app.label(modal, "2 actions left"), "actions counter")
+		local before = parent.Bond
+		app.click(modal:FindFirstChild(parent.Id, true):FindFirstChild("Time", true), 0.5)
+		ok(app.data().Slots.Slot1.People[1].Bond > before, "bond increased on the server")
+		ok(app.label(modal, "1 action left"), "counter updated")
+		app.click(modal:FindFirstChild(parent.Id, true):FindFirstChild("Talk", true), 0.5)
+		ok(app.label(modal, "0 actions left"), "out of actions")
+		eq(modal:FindFirstChild(parent.Id, true):FindFirstChild("Time", true):GetAttribute("Disabled"), true, "buttons disabled")
+		app.click(modal:FindFirstChild("Close", true), 0.4)
+	end)
+
+	test("Lifestyle panel changes your focus", function()
+		app.click(app.screen("Game").HUD:FindFirstChild("Lifestyle", true), 0.2)
+		local modal = app.gui.CYL_Overlay.Root:FindFirstChild("LifestyleModal")
+		ok(modal, "lifestyle panel open")
+		ok(app.label(modal, "Available from age 16"), "money focus is age-gated for a child")
+		app.click(modal:FindFirstChild("Health", true), 0.5)
+		eq(app.data().Slots.Slot1.Focus, "Health")
+		ok(app.label(modal, "✓ CURRENT"), "current marked")
+		app.click(modal:FindFirstChild("Close", true), 0.4)
+	end)
+
 	test("Play an entire life through the UI, from age 6 to 85", function()
 		app.Anim.Reduced = true
 		local careerSeen = false
@@ -354,6 +383,25 @@ return function(H)
 		eq(phone.Decision.GetMode(), "Scenario")
 		phone.click(phone.screen("Game").HUD:FindFirstChild("Stats", true), 0.3)
 		ok(phone.gui.CYL_Overlay.Root:FindFirstChild("StatsModal"), "stats modal")
+		-- Money panel as an adult with savings and a loan.
+		phone.DataService.Update(phone.player, function(d)
+			local life = d.Slots.Slot1
+			life.Age = 30
+			life.Money = 20000
+			table.insert(life.Loans, { Kind = "Student", Balance = 4000, Rate = 0.03, Payment = 500 })
+		end)
+		task.wait(0.3)
+		phone.click(phone.screen("Game").HUD:FindFirstChild("Money", true), 0.3)
+		local money = phone.gui.CYL_Overlay.Root:FindFirstChild("MoneyModal")
+		ok(money, "money panel")
+		ok(phone.label(money, "Student loan"), "loan listed")
+		ok(phone.label(money, "Rent"), "budget shows rent")
+		phone.click(money:FindFirstChild("Invest50", true), 0.6)
+		eq(phone.data().Slots.Slot1.Investments, 10000, "invested half")
+		eq(phone.data().Slots.Slot1.Money, 10000)
+		phone.click(money:FindFirstChild("Repay1Max", true), 0.6)
+		eq(#phone.data().Slots.Slot1.Loans, 0, "loan paid off")
+		eq(phone.data().Slots.Slot1.Money, 6000)
 		local clean, report = phone.noErrors()
 		ok(clean, report)
 	end)

@@ -26,10 +26,11 @@ local Config = require(script.Parent.Parent.Config)
 local StatDefinitions = require(script.Parent.StatDefinitions)
 local TableUtil = require(script.Parent.Parent.Util.TableUtil)
 local StatMath = require(script.Parent.Parent.Util.StatMath)
+local People = require(script.Parent.Parent.Util.People)
 
 local DataTemplate = {}
 
-DataTemplate.CurrentVersion = 1
+DataTemplate.CurrentVersion = 2
 
 DataTemplate.SlotIds = {}
 for i = 1, Config.SaveSlotCount do
@@ -100,7 +101,7 @@ function DataTemplate.NewLife(name: string, seed: number)
 	-- Wealth is always derived from net worth (see StatMath.WealthFromNetWorth).
 	stats.Wealth = StatMath.WealthFromNetWorth(Config.StartingMoney)
 
-	return {
+	local life = {
 		Name = name,
 		Seed = seed,
 		StartedAt = os.time(),
@@ -123,7 +124,20 @@ function DataTemplate.NewLife(name: string, seed: number)
 		Reveals = {}, -- array of Life Reveal snapshots per stage
 		CurrentScenario = false, -- the scenario the server is waiting on, or false
 		Completed = false,
+		-- Phase 4: people, lifestyle and finances
+		People = {}, -- array of Person (see Shared/Util/People)
+		NextPersonId = 1,
+		Focus = "Balanced", -- lifestyle focus (see Shared/Data/Lifestyle)
+		Investments = 0, -- invested money (grows/shrinks with the market each year)
+		Loans = {}, -- array of { Kind = "Student"|"Mortgage", Balance, Rate, Payment }
+		ActionTurn = -1, -- decision count when ActionsUsed was last reset
+		ActionsUsed = 0, -- People/Finance actions used since the last decision
 	}
+	-- Everyone starts with two parents.
+	local rng = Random.new(seed % 2147483646 + 1)
+	People.Add(life, "Parent", rng)
+	People.Add(life, "Parent", rng)
+	return life
 end
 
 --[[
@@ -131,7 +145,36 @@ end
 	Add a new function whenever CurrentVersion is bumped; never edit old ones.
 ]]
 DataTemplate.Migrations = {
-	-- [1] = function(profile) ... profile.Version = 2 end,
+	-- v1 → v2: lives gained named People, Focus, Investments and Loans.
+	-- Build People from the old counters so existing partners/children keep existing.
+	[1] = function(profile)
+		for _, life in pairs(profile.Slots or {}) do
+			if type(life) == "table" and life.People == nil then
+				local rel = life.Relationships or { Partner = false, Married = false, Children = 0, Friends = 0 }
+				local counts = { Partner = rel.Partner, Married = rel.Married, Children = rel.Children or 0, Friends = rel.Friends or 0 }
+				life.Relationships = rel
+				life.People = {}
+				life.NextPersonId = 1
+				life.Age = life.Age or 30
+				life.Name = life.Name or "You"
+				local rng = Random.new(((life.Seed or 1) % 2147483646) + 1)
+				People.Add(life, "Parent", rng)
+				People.Add(life, "Parent", rng)
+				if counts.Partner then
+					local partner = People.Add(life, "Partner", rng)
+					partner.Married = counts.Married == true
+				end
+				for _ = 1, math.min(counts.Children, 12) do
+					local child = People.Add(life, "Child", rng)
+					child.BornAge = math.max(0, life.Age - 5)
+				end
+				for _ = 1, math.min(counts.Friends, People.MaxFriends) do
+					People.Add(life, "Friend", rng)
+				end
+				People.Sync(life)
+			end
+		end
+	end,
 }
 
 --[[

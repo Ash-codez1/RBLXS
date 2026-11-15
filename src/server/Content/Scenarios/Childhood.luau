@@ -26,6 +26,7 @@ return {
 					Stats = { Popularity = 6, Relationships = 6, Happiness = 3 },
 					Traits = { Social = 1 },
 					Flags = { "Outgoing" },
+					Friends = 2,
 					Story = "{name} walked into class and introduced themselves to everyone. By lunchtime they had three new friends.",
 				},
 			},
@@ -46,6 +47,7 @@ return {
 				Description = "Maybe if you stay very still, nobody will notice.",
 				Effects = {
 					Stats = { Happiness = -3, Relationships = 3, Popularity = -3 },
+					Bond = { Parent = 4 },
 					Traits = { Shy = 1 },
 					Flags = { "Shy" },
 					Story = "{name} clung on and had to be gently coaxed inside. It took a while to feel brave.",
@@ -102,6 +104,7 @@ return {
 				Effects = {
 					Stats = { Health = 5, Relationships = 4, Popularity = 2 },
 					Traits = { Athletic = 1 },
+					Friends = 1,
 					Story = "{name} played outside until the streetlights came on.",
 				},
 			},
@@ -201,6 +204,7 @@ return {
 				Description = "Rules are rules.",
 				Effects = {
 					Stats = { Health = 5, Reputation = 3, Relationships = 3 },
+					Bond = { Parent = 5 },
 					Flags = { "GoodKid" },
 					Story = "{name} went to bed on time and woke up full of energy.",
 				},
@@ -222,6 +226,7 @@ return {
 				Description = "You can be very persuasive.",
 				Effects = {
 					Stats = { Happiness = 2, Relationships = -5, Reputation = -2 },
+					Bond = { Parent = -8 },
 					Traits = { Rebellious = 1 },
 					Flags = { "Rebellious" },
 					Story = "{name} argued every single night. Dinners got a bit tense.",
@@ -236,7 +241,7 @@ return {
 					Traits = { Playful = 1 },
 					Story = "{name} played games under the duvet long after lights out.",
 					Outcomes = {
-						{ Chance = 0.5, Stats = { Relationships = -4, Reputation = -3 }, Story = "Until the night their parents walked in. Tablet confiscated for a month." },
+						{ Chance = 0.5, Stats = { Relationships = -4, Reputation = -3 }, Bond = { Parent = -5 }, Story = "Until the night their parents walked in. Tablet confiscated for a month." },
 					},
 				},
 			},
@@ -499,6 +504,7 @@ return {
 				Effects = {
 					Stats = { Relationships = 5, Happiness = 3 },
 					Traits = { Social = 1 },
+					Friends = 1,
 					Story = "{name} played with their classmates every evening, laughing over voice chat.",
 				},
 			},

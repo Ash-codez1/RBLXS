@@ -3,7 +3,8 @@
 	Chooses the next scenario for a life from a stage's pool.
 
 	Rules, in order:
-	  1. Only scenarios for the life's current stage whose Requires pass.
+	  1. Only scenarios for the life's current stage (Stage, or any of Stages)
+	     whose Requires pass.
 	  2. Scenarios marked Once are skipped if already seen this life.
 	  3. If any eligible scenario has a Priority, the highest Priority wins
 	     (used for "first day of school"-style openers).
@@ -63,7 +64,8 @@ end
 function ScenarioPicker.Eligible(life, pool)
 	local eligible = {}
 	for _, scenario in ipairs(pool) do
-		if scenario.Stage == life.Stage and not (scenario.Once and life.Seen[scenario.Id]) and Conditions.Check(life, scenario.Requires) then
+		local stageMatch = scenario.Stage == life.Stage or (scenario.Stages ~= nil and table.find(scenario.Stages, life.Stage) ~= nil)
+		if stageMatch and not (scenario.Once and life.Seen[scenario.Id]) and Conditions.Check(life, scenario.Requires) then
 			table.insert(eligible, scenario)
 		end
 	end

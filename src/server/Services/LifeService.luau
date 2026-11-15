@@ -43,6 +43,7 @@ local Consequences = require(Server.Lib.Consequences)
 local ScenarioPicker = require(Server.Lib.ScenarioPicker)
 local RandomEvents = require(Server.Lib.RandomEvents)
 local Yearly = require(Server.Lib.Yearly)
+local Actions = require(Server.Lib.Actions)
 local Scenarios = require(Server.Content.Scenarios)
 
 local DataService = require(script.Parent.DataService)
@@ -300,6 +301,7 @@ function LifeService.MakeChoice(player: Player, scenarioArg: any, choiceArg: any
 				MoneyDelta = eventSummary.MoneyDelta,
 				TraitsGained = eventSummary.TraitsGained,
 				LifeChanges = eventSummary.LifeChanges,
+				BondChanges = eventSummary.BondChanges,
 				Lucky = eventSummary.OutcomeTriggered,
 			}
 		end
@@ -335,6 +337,8 @@ function LifeService.MakeChoice(player: Player, scenarioArg: any, choiceArg: any
 			Lucky = summary.OutcomeTriggered,
 			TraitsGained = summary.TraitsGained,
 			LifeChanges = summary.LifeChanges,
+			BondChanges = summary.BondChanges,
+			Investment = yearly.Investment,
 			Event = eventPayload,
 			PrevAge = prevAge,
 			Age = l.Age,
@@ -359,6 +363,78 @@ function LifeService.MakeChoice(player: Player, scenarioArg: any, choiceArg: any
 	return true, TableUtil.DeepCopy(outcome)
 end
 
+--[[
+	Runs one Lib/Actions function on the active life inside DataService.Update.
+	Actions get their own RNG stream keyed by decision count + actions used,
+	so results can't be rerolled by retrying.
+]]
+local function runAction(player: Player, fn, ...)
+	local data = DataService.Get(player)
+	if not data then
+		return false, "NotLoaded"
+	end
+	local life = activeLife(data)
+	if not life or life.Completed then
+		return false, "NoLife"
+	end
+	local args = table.pack(...)
+	local ok, result
+	DataService.Update(player, function(d)
+		local l = activeLife(d)
+		local salt = 10 + (if l.ActionTurn == #l.Decisions then l.ActionsUsed else 0)
+		-- Append the RNG as the last argument. (A table.unpack in the middle of
+		-- an argument list would be cut down to its first value.)
+		args[args.n + 1] = rngFor(l, salt)
+		ok, result = fn(l, table.unpack(args, 1, args.n + 1))
+	end)
+	return ok, if type(result) == "table" then TableUtil.DeepCopy(result) else result
+end
+
+function LifeService.Interact(player: Player, personId: any, action: any)
+	local id = Validate.Id(personId, 16)
+	local kind = Validate.OneOf(action, { "Time", "Gift", "Talk" })
+	if not id or not kind then
+		return false, "BadArgs"
+	end
+	return runAction(player, Actions.Interact, id, kind)
+end
+
+function LifeService.MeetPeople(player: Player, kind: any)
+	local k = Validate.OneOf(kind, { "Friend", "Love" })
+	if not k then
+		return false, "BadArgs"
+	end
+	return runAction(player, Actions.Meet, k)
+end
+
+function LifeService.SetFocus(player: Player, focus: any)
+	local id = Validate.Id(focus, 16)
+	if not id then
+		return false, "BadArgs"
+	end
+	return runAction(player, function(life, f)
+		return Actions.SetFocus(life, f)
+	end, id)
+end
+
+function LifeService.Invest(player: Player, amount: any)
+	return runAction(player, function(life, a)
+		return Actions.Invest(life, a)
+	end, amount)
+end
+
+function LifeService.Withdraw(player: Player, amount: any)
+	return runAction(player, function(life, a)
+		return Actions.Withdraw(life, a)
+	end, amount)
+end
+
+function LifeService.RepayLoan(player: Player, index: any, amount: any)
+	return runAction(player, function(life, i, a)
+		return Actions.RepayLoan(life, i, a)
+	end, index, amount)
+end
+
 function LifeService.Init()
 	if #Scenarios.Issues > 0 then
 		warn(("[LifeService] %d content issue(s) found; see warnings above"):format(#Scenarios.Issues))
@@ -371,6 +447,12 @@ function LifeService.Start()
 	Net.Handle("DeleteLife", deleteLife)
 	Net.Handle("GetScenario", LifeService.GetScenario)
 	Net.Handle("MakeChoice", LifeService.MakeChoice)
+	Net.Handle("Interact", LifeService.Interact)
+	Net.Handle("MeetPeople", LifeService.MeetPeople)
+	Net.Handle("SetFocus", LifeService.SetFocus)
+	Net.Handle("Invest", LifeService.Invest)
+	Net.Handle("Withdraw", LifeService.Withdraw)
+	Net.Handle("RepayLoan", LifeService.RepayLoan)
 end
 
 return LifeService

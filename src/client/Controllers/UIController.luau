@@ -308,6 +308,80 @@ function UIController.IsModalOpen(): boolean
 	return modalOpen
 end
 
+--[[
+	Panel modal used by the HUD panels (People, Lifestyle, Money, Stats).
+	Only one is open at a time. Returns a handle:
+	  { Root, Panel, Scroll, Close(), IsOpen() }
+	Closes on ✕, on tapping outside, and on gamepad B.
+]]
+local currentPanel = nil
+function UIController.ClosePanel()
+	if currentPanel then
+		local handle = currentPanel
+		currentPanel = nil
+		ContextActionService:UnbindAction("CYL_ClosePanel")
+		Anim.Fade(handle.Root, false, 0.15)
+		task.delay(0.25, function()
+			handle.Root:Destroy()
+		end)
+		if handle.OnClose then
+			task.spawn(handle.OnClose)
+		end
+	end
+end
+
+function UIController.OpenPanel(options: { [string]: any })
+	UIController.ClosePanel()
+	local modalRoot = Create("CanvasGroup", { Name = options.Name or "PanelModal", BackgroundColor3 = Theme.Color.Black, BackgroundTransparency = 0.35, Size = UDim2.fromScale(1, 1), ZIndex = 30, Parent = overlay })
+	local closer = Create("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Selectable = false, Parent = modalRoot })
+	closer.Activated:Connect(UIController.ClosePanel)
+	local width = math.min(options.Width or 820, virtualSize.X - 24)
+	local height = math.min(options.Height or 660, virtualSize.Y - 24)
+	local panel = Components.Panel({ Name = "Panel", Size = UDim2.fromOffset(width, height), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Padding = 20, Parent = modalRoot })
+	Create.Label({ Name = "Title", Text = options.Title or "", FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H2, Size = UDim2.new(1, -60, 0, 36), TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false, Parent = panel })
+	local subtitle = Create.Label({ Name = "Subtitle", Text = options.Subtitle or "", TextColor3 = Theme.Color.TextDim, TextSize = Theme.TextSize.Small, Position = UDim2.fromOffset(0, 38), Size = UDim2.new(1, -60, 0, 22), TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false, Parent = panel })
+	local close = Components.Button({ Name = "Close", Text = "✕", Style = "Secondary", Size = UDim2.fromOffset(48, 48), AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Parent = panel, OnClick = UIController.ClosePanel })
+	local scroll = Create("ScrollingFrame", {
+		Name = "Scroll",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, 72),
+		Size = UDim2.new(1, 0, 1, -72),
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 6,
+		ScrollBarImageColor3 = Theme.Color.Stroke,
+		Selectable = false,
+		Parent = panel,
+	})
+	Create.List(Enum.FillDirection.Vertical, 12).Parent = scroll
+	Create.Padding(4, 10, 14, 4).Parent = scroll
+
+	local handle = { Root = modalRoot, Panel = panel, Scroll = scroll, Subtitle = subtitle, Close = UIController.ClosePanel, OnClose = options.OnClose }
+	function handle.IsOpen()
+		return currentPanel == handle
+	end
+	-- Rebuilds the scrolling contents (keeps scroll position).
+	function handle.Clear()
+		Create.Clear(scroll)
+	end
+	currentPanel = handle
+	Anim.Fade(modalRoot, true, 0.2)
+	Anim.Pop(panel, 0.94)
+	UIController.Focus(close)
+	ContextActionService:BindActionAtPriority("CYL_ClosePanel", function(_, state)
+		if state == Enum.UserInputState.Begin then
+			UIController.ClosePanel()
+		end
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.ButtonB)
+	return handle
+end
+
+function UIController.CurrentPanel()
+	return currentPanel
+end
+
 -- ===== Backdrop: gradient + slowly drifting soft circles =====
 local function buildBackdrop()
 	backdrop = Create("Frame", {

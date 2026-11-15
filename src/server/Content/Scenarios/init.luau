@@ -24,6 +24,7 @@ local StatDefinitions = require(Shared.Data.StatDefinitions)
 local Traits = require(Shared.Data.Traits)
 local Careers = require(Shared.Data.Careers)
 local Assets = require(Shared.Data.Assets)
+local People = require(Shared.Util.People)
 
 local Scenarios = {}
 Scenarios.All = {}
@@ -68,6 +69,19 @@ local function validateEffects(where, effects, requires)
 				end
 			end
 		end
+		if block.Bond then
+			for role in pairs(block.Bond) do
+				if role ~= "All" and not People.IsRole(role) then
+					issue(label .. ": unknown Bond role " .. tostring(role))
+				end
+			end
+		end
+		if block.Meet and not ({ BestFriend = true, Friend = true, Sibling = true })[block.Meet] then
+			issue(label .. ": Meet must be BestFriend, Friend or Sibling")
+		end
+		if block.Loan and not ({ Student = true, Mortgage = true })[block.Loan.Kind] then
+			issue(label .. ": unknown Loan kind")
+		end
 		-- Big purchases ($10k+) must be gated by MinMoney so nothing is ever "free".
 		-- Smaller costs may floor at $0 (you can always scrape together a wedding).
 		if type(block.Money) == "number" and block.Money <= -10000 then
@@ -109,6 +123,20 @@ local function validateRequires(where, requires)
 			issue(where .. ": unknown education in Requires." .. key)
 		end
 	end
+	for _, key in ipairs({ "HasRole", "NotRole" }) do
+		for _, role in ipairs(requires[key] or {}) do
+			if not People.IsRole(role) then
+				issue(where .. ": unknown role in Requires." .. key .. ": " .. tostring(role))
+			end
+		end
+	end
+	for _, key in ipairs({ "MinBond", "MaxBond" }) do
+		for role in pairs(requires[key] or {}) do
+			if not People.IsRole(role) then
+				issue(where .. ": unknown role in Requires." .. key .. ": " .. tostring(role))
+			end
+		end
+	end
 	for _, key in ipairs({ "MinStats", "MaxStats" }) do
 		for stat in pairs(requires[key] or {}) do
 			if not StatDefinitions.IsValid(stat) then
@@ -129,7 +157,13 @@ function Scenarios.Register(list)
 			issue("duplicate scenario Id " .. id)
 			continue
 		end
-		if type(scenario.Stage) ~= "number" or scenario.Stage < 1 or scenario.Stage > 6 then
+		if scenario.Stages then
+			for _, stage in ipairs(scenario.Stages) do
+				if type(stage) ~= "number" or stage < 1 or stage > 6 then
+					issue(id .. ": invalid entry in Stages")
+				end
+			end
+		elseif type(scenario.Stage) ~= "number" or scenario.Stage < 1 or scenario.Stage > 6 then
 			issue(id .. ": invalid Stage")
 		end
 		local choices = scenario.Choices or {}
@@ -204,7 +238,7 @@ Scenarios.RegisterEvents(require(script.Parent:WaitForChild("Events")))
 function Scenarios.CountForStage(stage: number): number
 	local n = 0
 	for _, scenario in ipairs(Scenarios.All) do
-		if scenario.Stage == stage then
+		if scenario.Stage == stage or (scenario.Stages and table.find(scenario.Stages, stage)) then
 			n += 1
 		end
 	end
