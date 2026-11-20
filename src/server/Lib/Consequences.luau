@@ -131,8 +131,32 @@ local function setCareer(life, careerId: string, summary)
 	end
 	life.Career = { Id = careerId, Level = 1, YearsInRole = 0 }
 	life.Flags["Was_" .. careerId] = true
+	life.PeakCareerLevel = math.max(life.PeakCareerLevel or 0, 1)
+	Consequences.TrackBestCareer(life)
 	life.PeakSalary = math.max(life.PeakSalary or 0, Careers.SalaryAt(careerId, 1))
 	table.insert(summary.LifeChanges, Careers.Info[careerId].Icon .. " New career: " .. Careers.TitleAt(careerId, 1))
+end
+
+-- Remembers the best career this life ever had (for endings and Life History).
+function Consequences.TrackBestCareer(life)
+	local current = life.Career
+	if current.Id == "None" then
+		return
+	end
+	local bestCareer = life.BestCareer
+	if not bestCareer or current.Level > bestCareer.Level or (current.Level == bestCareer.Level and Careers.SalaryAt(current.Id, current.Level) > Careers.SalaryAt(bestCareer.Id, bestCareer.Level)) then
+		life.BestCareer = { Id = current.Id, Level = current.Level }
+	end
+end
+
+-- Career Success needed for the top levels: 62+ for level 4, 80+ for level 5.
+function Consequences.MaxLevelForCareerStat(careerStat: number): number
+	if careerStat >= 80 then
+		return 5
+	elseif careerStat >= 62 then
+		return 4
+	end
+	return 3
 end
 
 function Consequences.Promote(life, levels: number, summary)
@@ -145,8 +169,22 @@ function Consequences.Promote(life, levels: number, summary)
 		return false
 	end
 	local up = newLevel > career.Level
+	-- The top roles need a strong track record (Career Success stat).
+	if up then
+		local cap = Consequences.MaxLevelForCareerStat(life.Stats.Career)
+		if newLevel > cap then
+			if cap <= career.Level then
+				table.insert(summary.LifeChanges, ("📋 Not quite ready to be %s yet: build your Career Success"):format(Careers.TitleAt(career.Id, career.Level + 1)))
+				addStats(life, { Career = 3 }, summary, false)
+				return false
+			end
+			newLevel = cap
+		end
+	end
 	career.Level = newLevel
 	career.YearsInRole = 0
+	life.PeakCareerLevel = math.max(life.PeakCareerLevel or 0, newLevel)
+	Consequences.TrackBestCareer(life)
 	life.PeakSalary = math.max(life.PeakSalary or 0, Careers.SalaryAt(career.Id, newLevel))
 	table.insert(summary.LifeChanges, (if up then "📈 Promoted to " else "📉 Demoted to ") .. Careers.TitleAt(career.Id, newLevel))
 	addStats(life, { Career = if up then 6 else -6 }, summary, false)

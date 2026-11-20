@@ -35,6 +35,7 @@ local Signal = require(Shared.Util.Signal)
 local LifeStages = require(Shared.Data.LifeStages)
 local DataTemplate = require(Shared.Data.DataTemplate)
 local TableUtil = require(Shared.Util.TableUtil)
+local Config = require(Shared.Config)
 
 local Server = script.Parent.Parent
 local Validate = require(Server.Lib.Validate)
@@ -44,6 +45,7 @@ local ScenarioPicker = require(Server.Lib.ScenarioPicker)
 local RandomEvents = require(Server.Lib.RandomEvents)
 local Yearly = require(Server.Lib.Yearly)
 local Actions = require(Server.Lib.Actions)
+local Reveal = require(Server.Lib.Reveal)
 local Scenarios = require(Server.Content.Scenarios)
 
 local DataService = require(script.Parent.DataService)
@@ -262,7 +264,28 @@ function LifeService.MakeChoice(player: Player, scenarioArg: any, choiceArg: any
 
 		-- 1. The choice itself.
 		local summary = Consequences.Apply(l, choice.Effects, rngFor(l, 2))
-		table.insert(l.Decisions, { S = scenarioId, C = choiceId, Age = prevAge, Stage = prevStage })
+		-- How much this decision mattered (I) and how well it went (G), for the final reveal.
+		local impact, goodness = 4 * #summary.LifeChanges, 0
+		for stat, delta in pairs(summary.Applied) do
+			if stat ~= "Wealth" then
+				impact += math.abs(delta)
+				goodness += delta
+			end
+		end
+		if math.abs(summary.MoneyDelta) >= 10000 then
+			impact += 5
+			goodness += if summary.MoneyDelta > 0 then 3 else -3
+		end
+		table.insert(l.Decisions, {
+			S = scenarioId,
+			C = choiceId,
+			Age = prevAge,
+			Stage = prevStage,
+			T = scenario.Title,
+			X = choice.Text,
+			I = math.floor(impact * 10 + 0.5) / 10,
+			G = math.floor(goodness * 10 + 0.5) / 10,
+		})
 		l.Seen[scenarioId] = true
 		l.CurrentScenario = false
 		l.ScenarioIndex += 1
@@ -306,17 +329,25 @@ function LifeService.MakeChoice(player: Player, scenarioArg: any, choiceArg: any
 			}
 		end
 
-		-- 4. Stage bookkeeping.
+		-- 4. Stage bookkeeping + LIFE REVEAL.
+		local revealPayload, finalEntry = nil, nil
 		if stageCompleted then
-			-- Snapshot for Life Reveal (Phase 5 adds predictions to this record).
 			table.insert(l.Reveals, { Stage = stageCompleted, Age = l.Age, Stats = table.clone(l.Stats), Money = l.Money, Time = os.time() })
 			if l.Stage < LifeStages.Count then
 				l.Stage += 1
 				l.ScenarioIndex = 0
+				revealPayload = Reveal.Stage(l, stageCompleted, rngFor(l, 6))
 			else
 				l.Completed = true
 				lifeCompleted = true
 				d.Lifetime.LivesCompleted += 1
+				Consequences.SyncWealth(l)
+				finalEntry = Reveal.Final(l, d.Lifetime.LivesCompleted)
+				l.HistoryId = finalEntry.Id
+				table.insert(d.LifeHistory, finalEntry)
+				TableUtil.TrimArray(d.LifeHistory, Config.MaxLifeHistory)
+				d.Coins += finalEntry.Coins
+				d.Lifetime.CoinsEarned += finalEntry.Coins
 			end
 		end
 
@@ -340,6 +371,8 @@ function LifeService.MakeChoice(player: Player, scenarioArg: any, choiceArg: any
 			BondChanges = summary.BondChanges,
 			Investment = yearly.Investment,
 			Event = eventPayload,
+			Reveal = revealPayload,
+			Final = finalEntry,
 			PrevAge = prevAge,
 			Age = l.Age,
 			PrevStage = prevStage,

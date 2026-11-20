@@ -10,7 +10,7 @@
 	  • people: bonds fade unless maintained; close bonds lift Happiness and
 	    pull the Relationships stat toward them; loneliness hurts; a very weak
 	    partner bond can end the relationship
-	  • ageing: Health slowly declines after 50, faster after 70
+	  • ageing: Health slowly declines after 55, faster after 70
 	Called by LifeService inside the decision update, with the life's seeded RNG.
 ]]
 
@@ -31,12 +31,12 @@ Yearly.BaseSavingsRate = Budget.BaseSavingsRate
 Yearly.RentCost = Budget.RentCost
 Yearly.ChildCost = Budget.ChildCost
 Yearly.PensionShare = Budget.PensionShare
-Yearly.AutoPromoteYears = 5
-Yearly.AutoPromoteMinCareer = 55
-Yearly.AutoPromoteChance = 0.5
-Yearly.MarketReturn = 0.06
-Yearly.MarketSwing = 0.24
-Yearly.CrashChance = 0.05
+Yearly.AutoPromoteYears = 6
+Yearly.AutoPromoteMinCareer = 60
+Yearly.AutoPromoteChance = 0.25
+Yearly.MarketReturn = 0.045
+Yearly.MarketSwing = 0.22
+Yearly.CrashChance = 0.06
 Yearly.NeglectBond = 15 -- partner bond below this risks a break-up
 Yearly.NeglectChance = 0.25
 
@@ -157,9 +157,9 @@ function Yearly.Advance(life, startAge: number, years: number, rng, summary)
 		relationshipMood(life, summary)
 
 		if age >= 70 then
-			healthLoss += 1
-		elseif age >= 50 then
-			healthLoss += 0.5
+			healthLoss += 0.8
+		elseif age >= 55 then
+			healthLoss += 0.4
 		end
 	end
 	life.Age = savedAge

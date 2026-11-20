@@ -21,13 +21,13 @@ People.MaxFriends = 6
 People.ActionsPerTurn = 2
 
 People.Roles = {
-	Parent = { Label = "Parent", Icon = "🧑‍🍼", Decay = 1.5, Weight = 1, StartBond = 70 },
-	Sibling = { Label = "Sibling", Icon = "🧒", Decay = 2, Weight = 0.7, StartBond = 60 },
-	Partner = { Label = "Partner", Icon = "❤️", Decay = 1.5, MarriedDecay = 1, Weight = 2.5, StartBond = 65 },
+	Parent = { Label = "Parent", Icon = "🧑‍🍼", Decay = 1, Weight = 1, StartBond = 70 },
+	Sibling = { Label = "Sibling", Icon = "🧒", Decay = 1.2, Weight = 0.7, StartBond = 60 },
+	Partner = { Label = "Partner", Icon = "❤️", Decay = 1, MarriedDecay = 0.6, Weight = 2.5, StartBond = 65 },
 	Ex = { Label = "Ex", Icon = "💔", Decay = 0, Weight = 0, StartBond = 20 },
-	Child = { Label = "Child", Icon = "👶", Decay = 1.5, Weight = 1.2, StartBond = 75 },
-	BestFriend = { Label = "Best Friend", Icon = "🫶", Decay = 2, Weight = 1.2, StartBond = 75 },
-	Friend = { Label = "Friend", Icon = "🙂", Decay = 3, Weight = 0.5, StartBond = 55 },
+	Child = { Label = "Child", Icon = "👶", Decay = 0.8, Weight = 1.2, StartBond = 75 },
+	BestFriend = { Label = "Best Friend", Icon = "🫶", Decay = 1.2, Weight = 1.2, StartBond = 75 },
+	Friend = { Label = "Friend", Icon = "🙂", Decay = 2, Weight = 0.5, StartBond = 55 },
 }
 
 function People.IsRole(role: any): boolean

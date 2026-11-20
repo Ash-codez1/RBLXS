@@ -235,6 +235,29 @@ function Scenarios.RegisterEvents(list)
 end
 Scenarios.RegisterEvents(require(script.Parent:WaitForChild("Events")))
 
+-- ===== Life Reveal twists =====
+local FutureIds = require(Shared.Util.Futures).Info
+local TWIST_KINDS = { Setback = true, Rescue = true, Surprise = true }
+Scenarios.TwistIds = {}
+for _, twist in ipairs(require(script.Parent:WaitForChild("Twists"))) do
+	local id = twist.Id
+	if type(id) ~= "string" or Scenarios.TwistIds[id] or Scenarios.EventById[id] or Scenarios.ById[id] then
+		issue("invalid or duplicate twist Id " .. tostring(id))
+		continue
+	end
+	Scenarios.TwistIds[id] = true
+	if not TWIST_KINDS[twist.Kind] then
+		issue(id .. ": unknown twist Kind " .. tostring(twist.Kind))
+	end
+	for _, counter in ipairs(twist.Counters or {}) do
+		if not FutureIds[counter] then
+			issue(id .. ": unknown future in Counters: " .. tostring(counter))
+		end
+	end
+	validateRequires(id, twist.Requires)
+	validateEffects(id, twist.Effects, { MinMoney = math.huge })
+end
+
 function Scenarios.CountForStage(stage: number): number
 	local n = 0
 	for _, scenario in ipairs(Scenarios.All) do

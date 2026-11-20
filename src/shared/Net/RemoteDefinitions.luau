@@ -51,5 +51,9 @@ return {
 		Withdraw = { RateLimit = { Rate = 3, Burst = 5 } },
 		-- C->S: (loanIndex, amount) pay a loan down early
 		RepayLoan = { RateLimit = { Rate = 3, Burst = 5 } },
+
+		-- ===== Life Reveal (RevealService) =====
+		-- C->S: () -> cards for every player in the server (privacy-filtered)
+		GetLifeCards = { RateLimit = { Rate = 1, Burst = 3 } },
 	},
 }

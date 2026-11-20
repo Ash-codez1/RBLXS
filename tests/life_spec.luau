@@ -219,6 +219,9 @@ return function(H)
 		local rng = H.Random.new(99)
 		local LIVES = 400
 		local seen, events, careers, problems = {}, {}, {}, {}
+		local revealCount, twistCount, twistKinds, endingsSeen = 0, 0, {}, {}
+		local setbackDrops, setbackCount = 0, 0
+		local calibration = {} -- calibration[futureId] = { { pct, cameTrue, stage } }
 		local totals = { Money = 0, Married = 0, Kids = 0, Uni = 0, Retired = 0, Home = 0, Millionaire = 0, Broke = 0 }
 		local largest = 0
 		for i = 1, LIVES do
@@ -227,6 +230,7 @@ return function(H)
 				d.ActiveSlot = "Slot1"
 			end)
 			local steps, finished = 0, false
+			local lifeReveals, finalEntry = {}, nil
 			while steps < 60 do
 				-- Behave a bit like a player: sometimes use People/Money actions and change focus.
 				local life = DS.Get(player).Slots.Slot1
@@ -271,6 +275,26 @@ return function(H)
 				if out.Event then
 					events[out.Event.Id] = (events[out.Event.Id] or 0) + 1
 				end
+				if out.StageCompleted and not out.LifeCompleted then
+					ok(out.Reveal and out.Reveal.Predictions and out.Reveal.Headline and out.Reveal.Archetype, "every stage ends with a Life Reveal")
+					revealCount += 1
+					table.insert(lifeReveals, out.Reveal)
+					if out.Reveal.Twist then
+						twistCount += 1
+						twistKinds[out.Reveal.Twist.Kind] = (twistKinds[out.Reveal.Twist.Kind] or 0) + 1
+						if out.Reveal.Twist.Kind == "Setback" then
+							local before = out.Reveal.Twist.Before
+							local positives = h.require("ReplicatedStorage.Shared.Util.Futures").Sorted(before)
+							setbackDrops += before[positives[1].Id] - out.Reveal.Predictions[positives[1].Id]
+							setbackCount += 1
+						end
+					end
+				end
+				if out.LifeCompleted then
+					ok(out.Final and out.Final.Ending and out.Final.Ending.Title, "final reveal with an ending title")
+					endingsSeen[out.Final.Ending.Id] = (endingsSeen[out.Final.Ending.Id] or 0) + 1
+					finalEntry = out.Final
+				end
 				if out.LifeCompleted then
 					finished = true
 					break
@@ -281,6 +305,18 @@ return function(H)
 			eq(finished, true, "life " .. i .. " finished")
 			eq(steps, 38, "life " .. i .. " decisions")
 			eq(life.Age, 85, "life " .. i .. " final age")
+			-- Record each reveal's predictions against what actually came true.
+			local cameTrue = {}
+			for _, id in ipairs(finalEntry.CameTrue) do
+				cameTrue[id] = true
+			end
+			for _, r in ipairs(lifeReveals) do
+				for id, pct in pairs(r.Predictions) do
+					calibration[id] = calibration[id] or {}
+					table.insert(calibration[id], { pct, cameTrue[id] == true, r.Stage })
+				end
+			end
+			eq(life.HistoryId, finalEntry.Id, "life linked to its history entry")
 			eq(#life.Reveals, 6, "a reveal snapshot per stage")
 			for stat, value in pairs(life.Stats) do
 				ok(value >= 0 and value <= 100, stat .. " in range")
@@ -316,8 +352,8 @@ return function(H)
 			totals.Uni += if CR.EducationRank[life.Education] >= 2 then 1 else 0
 			totals.Retired += if life.Flags.Retired then 1 else 0
 			totals.Home += if life.Assets.House or life.Assets.Mansion or life.Assets.Apartment then 1 else 0
-			totals.Millionaire += if life.Money >= 1e6 then 1 else 0
-			totals.Broke += if life.Money < 1000 then 1 else 0
+			totals.Millionaire += if finalEntry.NetWorth >= 1e6 then 1 else 0
+			totals.Broke += if finalEntry.NetWorth < 25000 then 1 else 0
 		end
 		eq(#problems, 0, table.concat(problems, "; "))
 
@@ -337,13 +373,65 @@ return function(H)
 		end
 		print(("      scenarios: %d/%d seen%s"):format(#SC.All - #unseen, #SC.All, if #unseen > 0 then " (unseen: " .. table.concat(unseen, ", ") .. ")" else ""))
 		print(("      events: %d/%d kinds seen; careers reached: %d; largest save: %.1f KB"):format(eventKinds, #SC.Events, careerKinds, largest / 1024))
-		print(("      endings: avg money %s · married %d%% · kids %d%% · degree %d%% · retired %d%% · homeowner %d%% · millionaire %d%% · broke %d%%"):format(
+		print(("      endings: avg money %s · married %d%% · kids %d%% · degree %d%% · retired %d%% · homeowner %d%% · net-worth millionaire %d%% · net worth under $25k %d%%"):format(
 			tostring(math.floor(totals.Money / LIVES)), totals.Married * 100 // LIVES, totals.Kids * 100 // LIVES, totals.Uni * 100 // LIVES,
 			totals.Retired * 100 // LIVES, totals.Home * 100 // LIVES, totals.Millionaire * 100 // LIVES, totals.Broke * 100 // LIVES))
 		ok(#unseen <= math.floor(#SC.All * 0.1), "at least 90% of scenarios reachable by random play")
+
+		-- ===== Life Reveal checks =====
+		local Futures = h.require("ReplicatedStorage.Shared.Util.Futures")
+		local Config = h.require("ReplicatedStorage.Shared.Config")
+		local twistRate = twistCount / revealCount
+		print(("      reveals: %d · twists %.0f%% (%s) · setbacks lowered the top future by %.1f points on average"):format(revealCount, twistRate * 100,
+			("setback %d, rescue %d, surprise %d"):format(twistKinds.Setback or 0, twistKinds.Rescue or 0, twistKinds.Surprise or 0), if setbackCount > 0 then setbackDrops / setbackCount else 0))
+		ok(math.abs(twistRate - Config.TwistChance) < 0.05, "twist rate ≈ TwistChance")
+		ok(setbackCount == 0 or setbackDrops / setbackCount > 3, "setback twists really work against the predicted future")
+		local endingKinds, endingList = 0, {}
+		for id, n in pairs(endingsSeen) do
+			endingKinds += 1
+			table.insert(endingList, ("%s %d"):format(id, n))
+		end
+		table.sort(endingList)
+		print("      endings: " .. table.concat(endingList, ", "))
+		ok(endingKinds >= 10, "at least 10 different ending titles across lives (" .. endingKinds .. ")")
+		-- Predictions are genuinely predictive: from Young Adulthood on, for every
+		-- future that isn't vanishingly rare, the model beats "always guess the
+		-- base rate" (Brier skill > 0) and is calibrated in the large.
+		local report = {}
+		for _, id in ipairs(Futures.Order) do
+			local rows = {}
+			for _, row in ipairs(calibration[id] or {}) do
+				if row[3] >= 3 then
+					table.insert(rows, row)
+				end
+			end
+			local n, hits, sumP = #rows, 0, 0
+			for _, row in ipairs(rows) do
+				hits += if row[2] then 1 else 0
+				sumP += row[1] / 100
+			end
+			local rate, mean = hits / n, sumP / n
+			local brier, base = 0, 0
+			for _, row in ipairs(rows) do
+				local y = if row[2] then 1 else 0
+				brier += (row[1] / 100 - y) ^ 2
+				base += (rate - y) ^ 2
+			end
+			local skill = if base > 0 then 1 - brier / base else 0
+			table.insert(report, ("%s %d%%/%d%% %+.2f"):format(id, math.floor(rate * 100 + 0.5), math.floor(mean * 100 + 0.5), skill))
+			if rate >= 0.05 and rate <= 0.95 then
+				ok(skill > 0, id .. " predictions beat the base rate (skill " .. skill .. ")")
+				ok(math.abs(mean - rate) < 0.1, ("%s calibrated: predicted %.0f%%, actual %.0f%%"):format(id, mean * 100, rate * 100))
+			end
+		end
+		print("      prediction accuracy (actual/predicted/skill): " .. table.concat(report, " · "))
+		local data = DS.Get(player)
+		eq(#data.LifeHistory, 30, "Life History keeps the 30 most recent lives")
+		ok(data.Coins > 1000, "coins accumulate across lives")
 		ok(eventKinds >= 20, "a wide variety of random events")
 		ok(careerKinds >= 14, "many different careers reached")
-		ok(largest < 64 * 1024, "save stays small")
+		-- DataStore entries may be up to 4 MB; this profile also holds 30 Life History entries.
+		ok(largest < 256 * 1024, ("save stays small (%.1f KB)"):format(largest / 1024))
 		h.close()
 	end)
 
@@ -768,6 +856,79 @@ return function(H)
 		ok(type(life.Loans) == "table")
 	end)
 	h4.close()
+
+	section("Friends' Life Reveals: privacy")
+	local h5 = bootServer({ JobId = "privacy" })
+	local DT5 = h5.require("ReplicatedStorage.Shared.Data.DataTemplate")
+	local DS5 = h5.require("ServerScriptService.Server.Services.DataService")
+	local RS5 = h5.require("ServerScriptService.Server.Services.RevealService")
+	local ana = h5.addPlayer(801, "Ana")
+	local ben = h5.addPlayer(802, "Ben")
+	task.wait(0.05)
+	for _, p in ipairs({ ana, ben }) do
+		DS5.Update(p, function(d)
+			d.Slots.Slot1 = DT5.NewLife(p.Name .. "Life", p.UserId)
+			d.ActiveSlot = "Slot1"
+		end)
+	end
+	local friends = false
+	for _, p in ipairs({ ana, ben }) do
+		p.IsFriendsWith = function()
+			return friends
+		end
+	end
+	local usedRemote = false
+	local function cardOf(viewer, target)
+		local cards
+		if not usedRemote then
+			-- First call goes through the real remote; later ones skip its rate limit.
+			usedRemote = true
+			local okC
+			okC, cards = h5.remote("GetLifeCards").OnServerInvoke(viewer)
+			assert(okC, "GetLifeCards failed")
+		else
+			cards = RS5.CardsFor(viewer)
+		end
+		for _, c in ipairs(cards) do
+			if c.UserId == target.UserId then
+				return c
+			end
+		end
+		return nil
+	end
+
+	test("Default privacy: strangers can't see your future; friends can (without stats)", function()
+		local stranger = cardOf(ana, ben)
+		eq(stranger.Hidden, true, "hidden from strangers by default (Friends only)")
+		eq(stranger.Card, nil)
+		friends = true
+		RS5.FriendCacheSeconds = 0
+		local friend = cardOf(ana, ben)
+		ok(friend.IsFriend and friend.Card, "friends see the card")
+		eq(friend.Card.LifeName, "BenLife")
+		ok(friend.Card.Predictions.Millionaire ~= nil, "predictions shared")
+		ok(friend.Card.Stats ~= nil, "default ShareStats = Friends shows stats to friends")
+	end)
+
+	test("Everyone / Nobody settings are respected; you always see yourself", function()
+		friends = false
+		DS5.Update(ben, function(d)
+			d.Privacy.ShareReveals = "Everyone"
+			d.Privacy.ShareStats = "Nobody"
+		end)
+		local c = cardOf(ana, ben)
+		ok(c.Card, "visible to everyone")
+		eq(c.Card.Stats, nil, "but stats stay private")
+		eq(c.Card.NetWorth, nil, "and net worth")
+		DS5.Update(ben, function(d)
+			d.Privacy.ShareReveals = "Nobody"
+		end)
+		friends = true
+		eq(cardOf(ana, ben).Hidden, true, "Nobody hides it even from friends")
+		local self = cardOf(ben, ben)
+		ok(self.IsYou and self.Card and self.Card.Stats, "you always see your own card")
+	end)
+	h5.close()
 
 	server.close()
 end

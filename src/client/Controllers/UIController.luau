@@ -46,6 +46,7 @@ local backdrop: Frame
 local scales: { UIScale } = {}
 
 local userScale = 1
+local currentScale = 1
 local virtualSize = Theme.DesignLandscape
 local narrow = false
 
@@ -71,6 +72,7 @@ local function computeLayout()
 	end
 	local scale = math.min(absolute.X / design.X, absolute.Y / design.Y) * userScale
 	scale = math.clamp(scale, 0.4, 3)
+	currentScale = scale
 	virtualSize = Vector2.new(math.floor(absolute.X / scale), math.floor(absolute.Y / scale))
 	narrow = virtualSize.X < Theme.NarrowWidth
 
@@ -84,6 +86,11 @@ end
 
 function UIController.GetVirtualSize(): Vector2
 	return virtualSize
+end
+
+-- The UIScale currently applied to virtual-pixel layouts.
+function UIController.GetScale(): number
+	return currentScale
 end
 
 function UIController.IsNarrow(): boolean

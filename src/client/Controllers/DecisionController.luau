@@ -38,6 +38,7 @@ local UIController = require(script.Parent.UIController)
 local HUDController = require(script.Parent.HUDController)
 local AudioController = require(script.Parent.AudioController)
 local NotificationController = require(script.Parent.NotificationController)
+local RevealController = require(script.Parent.RevealController)
 
 local DecisionController = {}
 DecisionController.Priority = 45
@@ -177,6 +178,9 @@ local function showLifeComplete()
 	end
 	messageView("🌅", "A Life Complete", body, {
 		{ Text = "Main Menu", Icon = "🏠", Style = "Secondary", OnClick = toMenu },
+		{ Text = "Life History", Icon = "📜", Style = "Accent", OnClick = function()
+			UIController.Show("LifeHistory")
+		end },
 		{ Text = "Live Again", Icon = "✨", OnClick = function()
 			UIController.Show("SlotSelect", "New")
 		end },
@@ -756,7 +760,17 @@ function advance()
 	busy = true
 	shownEvent = nil
 	local o = outcome
-	if o.StageCompleted then
+	local finalAction = nil
+	if o.Reveal then
+		-- LIFE REVEAL at the end of every stage.
+		mode = "Reveal"
+		newView()
+		RevealController.PlayStage(o.Reveal)
+	elseif o.LifeCompleted and o.Final then
+		mode = "Reveal"
+		newView()
+		finalAction = RevealController.PlayFinal(o.Final)
+	elseif o.StageCompleted then
 		AudioController.Play("StageComplete")
 		local nextStage = LifeStages.Get(o.Stage)
 		local subtitle = if o.LifeCompleted then "Your story is complete." else ("%s begin · Age %d"):format(o.StageName, o.Age)
@@ -767,6 +781,13 @@ function advance()
 	end
 	busy = false
 	outcome = nil
+	if finalAction == "Again" then
+		UIController.Show("SlotSelect", "New")
+		return
+	elseif finalAction == "History" then
+		UIController.Show("LifeHistory")
+		return
+	end
 	if UIController.Current() ~= "Game" then
 		return
 	end

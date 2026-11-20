@@ -33,6 +33,7 @@ Config.StartingMoney = 0 -- in-life money, resets every new life
 
 -- ===== Life simulation =====
 Config.EventChance = 0.28 -- chance of a random life event after each decision
+Config.TwistChance = 0.22 -- chance of a twist at each stage's Life Reveal
 
 -- ===== Networking =====
 -- Default token-bucket limits for remotes (requests per second, burst size).

@@ -12,19 +12,67 @@ Built in Luau as a [Rojo](https://rojo.space) project, so every script is a plai
 | 2 | Main menu, HUD, decision UI, settings, responsive layout (PC / mobile / tablet / console) | ✅ Done |
 | 3 | All six life stages (85 scenarios), 34 random events, branching, consequences, yearly income & ageing | ✅ Done |
 | 4 | People & bonds, People/Lifestyle/Money panels, investments, loans & mortgages, a scenario for every career | ✅ Done |
-| 5 | Life Reveal: predictions, probabilities, cinematics, final reveal, Life History | ⏳ Next |
-| 6 | Multiplayer: shared scenarios, group voting, comparisons | ⬜ |
+| 5 | **Life Reveal**: calibrated predictions, twists, stage & final cinematics, ending titles, Life History, comparisons | ✅ Done |
+| 6 | Multiplayer: friends joining, shared scenarios, group voting, group reveal sessions | ⏳ Next |
 | 7 | Shop, currency, inventory, monetisation | ⬜ |
 | 8 | World and environment, music and sound | ⬜ |
 | 9 | Achievements, daily rewards, challenges, leaderboards | ⬜ |
 | 10–11 | Security hardening, testing, polish | ⬜ (core saving/security done in Phase 1) |
 
-**92 automated tests pass** (`lune run tests/run.luau`). They include:
+**95 automated tests pass** (`lune run tests/run.luau`). They include:
 - a simulation of 400 random lives from age 5 to 85;
 - a full life played through the real UI;
 - UI click-throughs on desktop, phone portrait, phone landscape and gamepad.
 
 Nothing has been play-tested inside Roblox Studio yet; see §4.
+
+### LIFE REVEAL (Phase 5): the signature feature
+
+**Predictions you can trust.** `Shared/Util/Futures` estimates 11 possible futures: Millionaire, Top of your field, Happy family, Famous, Brilliant mind, Long healthy life, Widely respected, Truly happy, Adventurer, plus two risks (Hard times, Lonely).
+- The estimates come from the life's actual state: stats and their trend, money, investments, property, debt, career, level, education, partner, children, bonds, traits, flags, lifestyle focus and age.
+- Raw model scores are calibrated (Platt scaling) on simulated lives, then checked on a separate set of lives the fit never saw.
+- The test suite proves that from Young Adulthood onward, every common future's predictions beat "just guess the average" and are within 10 points of reality. Odds sharpen as life goes on and change with every decision.
+- Re-fit after big balance changes:
+
+```bash
+lune run tests/tools/calibrate.luau --fit 800
+```
+
+- Report on held-out lives:
+
+```bash
+lune run tests/tools/calibrate.luau 600 555
+```
+
+**Stage reveals.** At the end of each of the first five stages a cinematic plays:
+1. Title with light rays.
+2. Who you became.
+3. Your possible futures, as counting bars with ▲▼ trend arrows versus the last reveal.
+4. A typewriter prediction, such as *"Your decisions suggest you could become a millionaire."*, *"Your financial decisions could put your future at risk."* or *"Your future is uncertain. One major decision could change everything."*
+5. An animated preview of the most likely future (11 scenes, e.g. a mansion and sports car for Luxury, a stage with camera flashes for Fame, rain for Hard times… "but it's not too late"), with a slow camera push-in.
+6. *"The future is never decided."*
+
+Tap to speed up, Skip to jump ahead, and Reduce animations is respected.
+
+**Twists.** At 22% of reveals something unexpected really happens (`Content/Twists`, 16 twists):
+- If one future looks very likely, a **setback** works against it: a crash, a scandal, an illness, a heartbreak.
+- If a risk looks likely, a **rescue** helps: a secret inheritance, a new circle of friends.
+- Otherwise, a **surprise**: a child prodigy, the big idea, a long-lost sibling.
+
+The reveal shows the odds before and after; on average, setbacks cut the top future's odds by about 28 points.
+
+**Final reveal & ending titles.** At 85, the final reveal covers:
+- the choices that shaped you (the most consequential decisions, measured when you made them);
+- the people in your life, a net worth count-up, and your career and education;
+- achievements, greatest moments and biggest regrets;
+- what was predicted vs. what came true;
+- your **ending title**, chosen from 23 by what actually happened (The Space Explorer, The Billionaire, The Family Legend, The Celebrity, The Comeback Kid, The Unknown Legend, The Unlucky One, The Quiet Life…), plus coins.
+
+It ends by asking *"What if you had chosen differently?"*, with **Live Again**, **Life History** and **Main Menu** buttons.
+
+**Life History** (menu → 📜). Your last 30 lives, each with a full detail view: replay its final reveal, or **compare two lives side by side**. Completed save slots offer "View Final Reveal".
+
+**🔮 Future panel.** Live odds for every future, how your predictions changed at each reveal, and **compare with players in this server**. Comparisons respect privacy settings: *Everyone / Friends / Nobody* for reveals, exact stats and past lives, using Roblox friendships. Group reveal sessions come with multiplayer in Phase 6.
 
 ### People, lifestyle and money (Phase 4)
 
@@ -91,22 +139,24 @@ ReplicatedStorage
    ├─ Net                              ModuleScript   (src/shared/Net/init.luau)
    │  └─ RemoteDefinitions             ModuleScript   every remote + rate limits
    └─ Util                             Folder
-      ├─ Budget, Format, People, Signal, StatMath, TableUtil   ModuleScripts
+      ├─ Budget, Endings, Format, Futures, People,
+      │  Signal, StatMath, TableUtil                          ModuleScripts
 
 ServerScriptService
 └─ Server                              Folder
    ├─ Main                             Script         (Main.server.luau)
    ├─ Content                          Folder
-   │  ├─ Events                        ModuleScript   34 random life events
+   │  ├─ Events                        ModuleScript   43 random life events
+   │  ├─ Twists                        ModuleScript   16 Life Reveal twists
    │  └─ Scenarios                     ModuleScript   (Scenarios/init.luau) loads + validates everything
    │     ├─ Childhood, Teen, YoungAdult,
    │     │  Adult, MiddleAge, Retirement  ModuleScripts  one per life stage
    │     └─ LifeAndWork                ModuleScript   multi-stage career & relationship scenarios
    ├─ Lib                              Folder
    │  ├─ Actions, Conditions, Consequences, MockDataStore, RandomEvents,
-   │  │  ScenarioPicker, SessionLock, Validate, Yearly ModuleScripts
+   │  │  Reveal, ScenarioPicker, SessionLock, Validate, Yearly   ModuleScripts
    └─ Services                         Folder
-      ├─ DataService, LifeService, SettingsService, StatService   ModuleScripts
+      ├─ DataService, LifeService, RevealService, SettingsService, StatService   ModuleScripts
 
 StarterPlayer
 └─ StarterPlayerScripts
@@ -114,9 +164,10 @@ StarterPlayer
       ├─ Main                          LocalScript    (Main.client.luau)
       ├─ Controllers                   Folder
       │  ├─ AudioController, DataController, DecisionController, FinanceController,
-      │  │  GraphicsController, HUDController, LifestyleController, LoadingController,
-      │  │  MenuController, NotificationController, PeopleController,
-      │  │  SettingsController, SettingsMenu, UIController            ModuleScripts
+      │  │  FutureController, GraphicsController, HUDController, LifeHistoryController,
+      │  │  LifestyleController, LoadingController, MenuController, NotificationController,
+      │  │  PeopleController, RevealController, SettingsController, SettingsMenu,
+      │  │  UIController                                              ModuleScripts
       └─ UILib                         Folder
          ├─ Anim, Components, Create, Layout, Theme                    ModuleScripts
 ```

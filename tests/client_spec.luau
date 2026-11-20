@@ -108,6 +108,23 @@ return function(H)
 				task.wait(0.03)
 			end
 		end
+		-- Skips a playing Life Reveal and presses its end-card button.
+		function api.finishReveal(buttonName)
+			local revealGui = api.gui:FindFirstChild("CYL_Reveal")
+			local deadline = os.clock() + 8
+			while os.clock() < deadline do
+				local skip = revealGui:FindFirstChild("RevealSkip", true)
+				local finish = revealGui:FindFirstChild(buttonName or "RevealContinue", true) or (not buttonName and revealGui:FindFirstChild("RevealMenu", true))
+				if finish then
+					api.click(finish, 0.2)
+					return true
+				elseif skip then
+					skip.Activated:Fire()
+				end
+				task.wait(0.1)
+			end
+			return false
+		end
 		-- Continue from an outcome: through an event card (if any) and any transition.
 		api.eventsSeen = 0
 		function api.continue()
@@ -117,6 +134,10 @@ return function(H)
 				api.eventsSeen += 1
 				assert(api.label(game, "EVENT"), "event card shows its rarity banner")
 				api.click(api.button(game, "Continue"), 0.1)
+			end
+			if api.Decision.GetMode() == "Reveal" then
+				api.revealsSeen = (api.revealsSeen or 0) + 1
+				api.finishReveal()
 			end
 			if api.Decision.GetMode() == "Transition" then
 				local skipper = H.find(game, function(d)
@@ -275,7 +296,12 @@ return function(H)
 		eq(life.Age, 85)
 		eq(#life.Decisions, 38)
 		ok(careerSeen, "HUD showed an occupation beyond school")
-		print(("      (%d random event card(s) shown along the way)"):format(app.eventsSeen))
+		eq(app.revealsSeen, 6, "a Life Reveal after every stage (5) plus the final reveal")
+		local history = app.data().LifeHistory
+		eq(#history, 1, "life saved to Life History")
+		ok(history[1].Ending and history[1].Ending.Title, "ending title")
+		ok(app.data().Coins > 100, "coins awarded for the completed life")
+		print(("      (%d random event card(s); ending: %s %s)"):format(app.eventsSeen, history[1].Ending.Icon, history[1].Ending.Title))
 	end)
 
 	test("HUD menu button returns to the menu, which now shows the life", function()
@@ -285,6 +311,33 @@ return function(H)
 		ok(app.button(menu, "Play"), "play button")
 		ok(app.label(menu, "CURRENT LIFE"), "life card")
 		ok(app.button(menu, "Continue Life"):GetAttribute("Disabled") ~= true, "Continue enabled")
+	end)
+
+	test("Life History lists the finished life; detail, replay and compare work", function()
+		local menu = app.screen("Menu")
+		app.click(app.button(menu, "Life History"), 0.3)
+		eq(app.UI.Current(), "LifeHistory")
+		local screen = app.screen("LifeHistory")
+		local entry = app.data().LifeHistory[1]
+		ok(app.label(screen, entry.Ending.Title), "ending shown in the list")
+		app.click(screen:FindFirstChild("Life" .. entry.Id, true), 0.3)
+		local detail = app.gui.CYL_Overlay.Root:FindFirstChild("LifeDetailModal")
+		ok(detail, "detail panel")
+		ok(app.label(detail, "PREDICTIONS VS REALITY"), "journey section")
+		app.click(detail:FindFirstChild("CompareLives", true), 0.3)
+		ok(app.gui.CYL_Overlay.Root:FindFirstChild("PickLifeModal"), "compare picker")
+		ok(app.label(app.gui.CYL_Overlay.Root:FindFirstChild("PickLifeModal"), "Complete another life"), "needs two lives")
+		app.UI.ClosePanel()
+		task.wait(0.3)
+		app.click(screen:FindFirstChild("Life" .. entry.Id, true), 0.3)
+		app.click(app.gui.CYL_Overlay.Root:FindFirstChild("LifeDetailModal"):FindFirstChild("Replay", true), 0.3)
+		local Reveal = app.client.require("StarterPlayerScripts.Client.Controllers.RevealController")
+		ok(Reveal.IsPlaying(), "final reveal replaying")
+		ok(app.finishReveal("RevealMenu"), "replay can be closed")
+		task.wait(0.2)
+		ok(not Reveal.IsPlaying(), "replay finished")
+		app.click(app.button(screen, "Back"), 0.3)
+		eq(app.UI.Current(), "Menu")
 	end)
 
 	test("Settings apply instantly and save to the server", function()
@@ -381,6 +434,12 @@ return function(H)
 		eq(phone.Decision.GetMode(), "Outcome")
 		phone.continue()
 		eq(phone.Decision.GetMode(), "Scenario")
+		phone.click(phone.screen("Game").HUD:FindFirstChild("Future", true), 0.3)
+		local future = phone.gui.CYL_Overlay.Root:FindFirstChild("FutureModal")
+		ok(future, "future panel")
+		ok(phone.label(future, "POSSIBLE FUTURES") and phone.label(future, "%"), "live odds shown")
+		phone.click(future:FindFirstChild("Compare", true), 0.5)
+		ok(phone.label(future, "Nobody else is here yet"), "compare list (alone in server)")
 		phone.click(phone.screen("Game").HUD:FindFirstChild("Stats", true), 0.3)
 		ok(phone.gui.CYL_Overlay.Root:FindFirstChild("StatsModal"), "stats modal")
 		-- Money panel as an adult with savings and a loan.

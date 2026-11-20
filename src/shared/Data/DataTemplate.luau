@@ -113,6 +113,9 @@ function DataTemplate.NewLife(name: string, seed: number)
 		Assets = {}, -- { [assetId] = true } houses, cars bought in-life
 		Career = { Id = "None", Level = 0, YearsInRole = 0 },
 		PeakSalary = 0, -- highest yearly salary reached (sets the retirement pension)
+		PeakCareerLevel = 0, -- highest career level ever reached (1–5)
+		BestCareer = false, -- { Id, Level } best career ever held
+		HistoryId = false, -- LifeHistory id once this life is completed
 		Education = "None",
 		Relationships = { Partner = false, Married = false, Children = 0, Friends = 0 },
 		Traits = {}, -- { [traitId] = strength } personality built from choices

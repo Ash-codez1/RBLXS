@@ -11,12 +11,12 @@ local Lifestyle = require(script.Parent.Parent.Data.Lifestyle)
 
 local Budget = {}
 
-Budget.BaseSavingsRate = 0.22
+Budget.BaseSavingsRate = 0.15
 Budget.ThriftyBonus = 0.03 -- per Thrifty trait strength
 Budget.PartTimeIncome = 2500
-Budget.UnemployedCost = 5000
+Budget.UnemployedCost = 6000
 Budget.ChildCost = 3500 -- per child under 18
-Budget.RentCost = 3000 -- adults without a home of their own
+Budget.RentCost = 4000 -- adults without a home of their own
 Budget.PensionShare = 0.4 -- of peak salary
 
 function Budget.OwnsHome(life): boolean

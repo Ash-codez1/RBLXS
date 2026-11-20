@@ -296,6 +296,15 @@ local function renderMenu()
 	end
 
 	Create.Label({
+		Name = "Coins",
+		Text = ("🪙 %d coins · %d %s lived"):format(data.Coins, #data.LifeHistory, if #data.LifeHistory == 1 then "life" else "lives"),
+		TextSize = Theme.TextSize.Small,
+		TextColor3 = Theme.Color.Gold,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		LayoutOrder = 98,
+		Parent = scroll,
+	})
+	Create.Label({
 		Name = "Version",
 		Text = "v" .. Config.Version,
 		TextSize = Theme.TextSize.Tiny,
@@ -339,19 +348,27 @@ local function slotCard(parent, slotId: string, index: number, life, width: numb
 
 		if slotMode == "Continue" then
 			firstButton = Components.Button({
-				Text = if life.Completed then "Completed" else "Continue",
-				Icon = "▶",
-				Style = "Primary",
+				Name = if life.Completed then "ViewReveal" else "Continue",
+				Text = if life.Completed then "View Final Reveal" else "Continue",
+				Icon = if life.Completed then "🔮" else "▶",
+				Style = if life.Completed then "Accent" else "Primary",
 				Size = UDim2.new(1, -64, 1, 0),
 				LayoutOrder = 1,
 				Parent = actions,
 				OnClick = function()
-					MenuController.ContinueSlot(slotId)
+					if life.Completed then
+						local LifeHistoryController = require(script.Parent.LifeHistoryController)
+						local entry = life.HistoryId and LifeHistoryController.Find(life.HistoryId)
+						if entry then
+							LifeHistoryController.Replay(entry)
+						else
+							UIController.Show("LifeHistory")
+						end
+					else
+						MenuController.ContinueSlot(slotId)
+					end
 				end,
 			})
-			if life.Completed then
-				Components.SetDisabled(firstButton, true)
-			end
 		else
 			firstButton = Components.Button({
 				Text = "Replace",
