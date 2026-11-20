@@ -130,6 +130,12 @@ local function compareView(me, them)
 			Create.Label({ Text = ("%s %s   %d  vs  %d"):format(info.Icon, info.DisplayName, mine.Stats[statName], theirs.Stats[statName]), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 40 + i, Parent = scroll })
 		end
 		Create.Label({ Text = ("💰 Net worth   %s  vs  %s"):format(Format.Money(mine.NetWorth), Format.Money(theirs.NetWorth)), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 60, Parent = scroll })
+		heading(scroll, "LIFESTYLE: HOMES & CARS", 61)
+		local function owned(card)
+			return if card.Assets and #card.Assets > 0 then table.concat(card.Assets, ", ") else "Nothing yet"
+		end
+		Create.Label({ Text = "You: " .. owned(mine), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 62, Parent = scroll })
+		Create.Label({ Text = them.DisplayName .. ": " .. owned(theirs), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 63, Parent = scroll })
 	elseif not theirs.Stats then
 		Create.Label({ Text = "🔒 " .. them.DisplayName .. " keeps their exact stats private.", TextColor3 = Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 40, Parent = scroll })
 	end
@@ -212,6 +218,40 @@ end
 FutureController.OpenCompare = function()
 	FutureController.Open()
 	renderCompare()
+end
+
+-- Opens a side-by-side comparison with one player (from Play With Friends).
+function FutureController.OpenCompareWith(userId: number)
+	if not DataController.GetActiveLife() then
+		NotificationController.Notify({ Title = "Start a life first", Text = "You need a life in progress to compare futures.", Kind = "Info" })
+		return
+	end
+	handle = UIController.OpenPanel({ Name = "FutureModal", Title = "⚖️  Compare Futures", Width = 760, OnClose = function()
+		handle = nil
+	end })
+	handle.Subtitle.Text = "Loading…"
+	local ok, cards = Net.Invoke("GetLifeCards")
+	if not handle or not handle.IsOpen() then
+		return
+	end
+	local me, them = nil, nil
+	if ok then
+		for _, c in ipairs(cards) do
+			if c.IsYou then
+				me = c
+			elseif c.UserId == userId then
+				them = c
+			end
+		end
+	end
+	if me and me.Card and them and them.Card then
+		compareView(me, them)
+	else
+		handle.Clear()
+		handle.Subtitle.Text = ""
+		local reason = if not ok then tostring(cards) elseif not them then "That player isn't here any more." elseif them.NoLife then them.DisplayName .. " is between lives right now." else "🔒 " .. them.DisplayName .. " keeps their future private."
+		Create.Label({ Text = reason, TextColor3 = Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = handle.Scroll })
+	end
 end
 
 function FutureController.Init()

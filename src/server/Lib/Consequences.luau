@@ -420,20 +420,38 @@ end
 	Applies effects (and possibly one chance Outcome) to `life`.
 	Returns summary = { Applied, MoneyDelta, FlagsAdded, TraitsGained, LifeChanges, Story, OutcomeTriggered }
 ]]
-function Consequences.Apply(life, effects, rng, logStory: boolean?)
+-- Rolls which chance Outcome (if any) happens: returns its index, or 0 for none.
+function Consequences.RollOutcome(effects, rng): number
+	if not effects.Outcomes then
+		return 0
+	end
+	local roll = rng:NextNumber()
+	local cumulative = 0
+	for index, outcome in ipairs(effects.Outcomes) do
+		cumulative += outcome.Chance
+		if roll < cumulative then
+			return index
+		end
+	end
+	return 0
+end
+
+--[[
+	`forcedOutcome` (optional) decides the chance Outcome instead of rolling:
+	group decisions roll once and pass the same index to every member, so
+	friends who start a business together share the same fate, while each
+	life still applies the effects to its own stats and money.
+]]
+function Consequences.Apply(life, effects, rng, logStory: boolean?, forcedOutcome: number?)
 	local summary = Consequences.NewSummary(rng)
 	applyBlock(life, effects, summary)
 
 	if effects.Outcomes then
-		local roll = rng:NextNumber()
-		local cumulative = 0
-		for _, outcome in ipairs(effects.Outcomes) do
-			cumulative += outcome.Chance
-			if roll < cumulative then
-				applyBlock(life, outcome, summary)
-				summary.OutcomeTriggered = true
-				break
-			end
+		local index = if forcedOutcome ~= nil then forcedOutcome else Consequences.RollOutcome(effects, rng)
+		local outcome = effects.Outcomes[index]
+		if outcome then
+			applyBlock(life, outcome, summary)
+			summary.OutcomeTriggered = true
 		end
 	end
 

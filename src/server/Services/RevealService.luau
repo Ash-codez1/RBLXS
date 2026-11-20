@@ -27,6 +27,9 @@ RevealService.FriendCacheSeconds = 300
 
 local friendCache: { [string]: { Value: boolean, Time: number } } = {}
 
+-- Set by PartyService: members of the same Life Circle count as friends.
+RevealService.ExtraFriendCheck = nil :: ((Player, Player) -> boolean)?
+
 function RevealService.AreFriends(a: Player, b: Player): boolean
 	if a == b then
 		return true
@@ -50,7 +53,8 @@ function RevealService.CardFor(viewer: Player, target: Player)
 	if not data then
 		return nil
 	end
-	local relation = if viewer == target then "Self" elseif RevealService.AreFriends(viewer, target) then "Friend" else "Stranger"
+	local partyFriend = RevealService.ExtraFriendCheck ~= nil and RevealService.ExtraFriendCheck(viewer, target)
+	local relation = if viewer == target then "Self" elseif partyFriend or RevealService.AreFriends(viewer, target) then "Friend" else "Stranger"
 	local entry = {
 		UserId = target.UserId,
 		DisplayName = target.DisplayName or target.Name,

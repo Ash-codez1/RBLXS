@@ -15,18 +15,35 @@ Built in Luau as a [Rojo](https://rojo.space) project, so every script is a plai
 | 3 | All six life stages (85 scenarios), 34 random events, branching, consequences, yearly income & ageing | ✅ Done |
 | 4 | People & bonds, People/Lifestyle/Money panels, investments, loans & mortgages, a scenario for every career | ✅ Done |
 | 5 | **Life Reveal**: calibrated predictions, twists, stage & final cinematics, ending titles, Life History, comparisons | ✅ Done |
-| 6 | Multiplayer: friends joining, shared scenarios, group voting, group reveal sessions | ⏳ Next |
-| 7 | Shop, currency, inventory, monetisation | ⬜ |
+| 6 | **Multiplayer**: Life Circles, invites, group decisions with voting, group Life Reveals, city events, joining friends | ✅ Done |
+| 7 | Shop, currency, inventory, monetisation | ⏳ Next |
 | 8 | World and environment, music and sound | ⬜ |
 | 9 | Achievements, daily rewards, challenges, leaderboards | ⬜ |
 | 10–11 | Security hardening, testing, polish | ⬜ (core saving/security done in Phase 1) |
 
-**97 automated tests pass** (`lune run tests/run.luau`). They include:
+**123 automated tests pass** (`lune run tests/run.luau`). They include:
 - a simulation of 400 random lives from age 5 to 85;
 - a full life played through the real UI;
 - UI click-throughs on desktop, phone portrait, phone landscape and gamepad.
 
 Nothing has been play-tested inside Roblox Studio yet; see §4.
+
+### Playing with friends (Phase 6)
+
+Every player always has their **own independent life**. Multiplayer adds things to do *together* without ever letting someone else write to your life.
+
+- **🤝 Life Circles** (Play With Friends, or 🤝 in the HUD): invite players in your server (invites expire after 45 s), up to 4 per circle.
+  - The leader can remove members, and leadership passes on if the leader leaves; a circle of one dissolves.
+  - You can **invite Roblox friends** with the Roblox invite prompt, and **join friends playing in other servers** (teleport).
+- **🎲 Group decisions:** the server picks a scenario everyone qualifies for, from 15 group scenarios (start a business together, holiday, band, sleepover, escape room…).
+  - Choices someone can't afford are locked for the group.
+  - Everyone votes, with a live tally and a 40 s timer. The majority decides; ties and no-shows are settled fairly at random.
+  - Chance outcomes are rolled **once for the group** (shared fate). The effects are applied to **each member's own life**, with their own stats, traits and money.
+  - Group decisions don't use up a turn or age anyone.
+  - Your friends' characters join your People list, and the shared moment shows up in your Final Reveal.
+- **🔮 Group Life Reveal:** everyone watches each member's predicted futures, then a **"most likely to…"** board. Privacy settings still apply, and circle members count as friends.
+- **⚖️ Compare:** side-by-side futures, stats, net worth and **homes & cars** with anyone whose privacy allows it.
+- **🎪 City events:** every 8 minutes the whole server is invited to something (festival, marathon, free concert, market frenzy…). Join or skip; joiners share one city-wide outcome, applied to their own lives.
 
 ### LIFE REVEAL (Phase 5): the signature feature
 
@@ -148,7 +165,9 @@ ServerScriptService
 └─ Server                              Folder
    ├─ Main                             Script         (Main.server.luau)
    ├─ Content                          Folder
+   │  ├─ CityEvents                    ModuleScript   7 server-wide shared events
    │  ├─ Events                        ModuleScript   43 random life events
+   │  ├─ GroupScenarios                ModuleScript   15 group decisions for Life Circles
    │  ├─ Twists                        ModuleScript   16 Life Reveal twists
    │  └─ Scenarios                     ModuleScript   (Scenarios/init.luau) loads + validates everything
    │     ├─ Childhood, Teen, YoungAdult,
@@ -158,18 +177,19 @@ ServerScriptService
    │  ├─ Actions, Conditions, Consequences, MockDataStore, RandomEvents,
    │  │  Reveal, ScenarioPicker, SessionLock, Validate, Yearly   ModuleScripts
    └─ Services                         Folder
-      ├─ DataService, LifeService, RevealService, SettingsService, StatService   ModuleScripts
+      ├─ CityEventService, DataService, LifeService, PartyService,
+      │  RevealService, SettingsService, StatService                          ModuleScripts
 
 StarterPlayer
 └─ StarterPlayerScripts
    └─ Client                           Folder
       ├─ Main                          LocalScript    (Main.client.luau)
       ├─ Controllers                   Folder
-      │  ├─ AudioController, DataController, DecisionController, FinanceController,
-      │  │  ControlsController, FutureController, GraphicsController, HUDController, LifeHistoryController,
-      │  │  LifestyleController, LoadingController, MenuController, NotificationController,
-      │  │  PeopleController, RevealController, SettingsController, SettingsMenu,
-      │  │  UIController                                              ModuleScripts
+      │  ├─ AudioController, ControlsController, DataController, DecisionController,
+      │  │  FinanceController, FriendsController, FutureController, GraphicsController,
+      │  │  HUDController, LifeHistoryController, LifestyleController, LoadingController,
+      │  │  MenuController, NotificationController, PartyController, PeopleController,
+      │  │  RevealController, SettingsController, SettingsMenu, UIController   ModuleScripts
       └─ UILib                         Folder
          ├─ Anim, Components, Create, Layout, Theme                    ModuleScripts
 ```

@@ -135,6 +135,7 @@ function DataTemplate.NewLife(name: string, seed: number)
 		Loans = {}, -- array of { Kind = "Student"|"Mortgage", Balance, Rate, Payment }
 		ActionTurn = -1, -- decision count when ActionsUsed was last reset
 		ActionsUsed = 0, -- People/Finance actions used since the last decision
+		Shared = {}, -- moments shared with other players: { Title, Icon, With = {names}, Age } (capped)
 	}
 	-- Everyone starts with two parents.
 	local rng = Random.new(seed % 2147483646 + 1)

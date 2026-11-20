@@ -35,6 +35,11 @@ Config.StartingMoney = 0 -- in-life money, resets every new life
 Config.EventChance = 0.28 -- chance of a random life event after each decision
 Config.TwistChance = 0.22 -- chance of a twist at each stage's Life Reveal
 
+-- ===== Multiplayer =====
+Config.CityEventInterval = 480 -- seconds between server-wide city events (90 in Studio)
+Config.CityEventJoinSeconds = 45
+Config.CityEventMinPlayers = 2 -- with an active life (1 in Studio, so solo testing works)
+
 -- ===== Networking =====
 -- Default token-bucket limits for remotes (requests per second, burst size).
 Config.DefaultRateLimit = { Rate = 4, Burst = 8 }

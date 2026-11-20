@@ -255,6 +255,11 @@ local function newInstance(className: string, name: string?)
 		end
 		inst.FireAllClients = function(self, ...)
 			table.insert(self.Fired, { Player = "ALL", Args = table.pack(...) })
+			if self.Bridges then
+				for target in pairs(self.Bridges) do
+					self.Bridge(target, ...)
+				end
+			end
 		end
 	end
 	return inst
@@ -507,6 +512,24 @@ function Harness.new(options)
 			InputChanged = fakeEvent(),
 			InputEnded = fakeEvent(),
 		},
+		SocialService = {
+			Prompts = 0,
+			CanSendGameInviteAsync = function()
+				return true
+			end,
+			PromptGameInvite = function(service)
+				service.Prompts += 1
+			end,
+		},
+		TeleportService = {
+			Teleports = {},
+			TeleportToPlaceInstance = function(service, placeId, jobId, player)
+				if options.TeleportFails ~= false then
+					error("Teleport isn't available in tests")
+				end
+				table.insert(service.Teleports, { PlaceId = placeId, JobId = jobId, Player = player })
+			end,
+		},
 		HttpService = {
 			GenerateGUID = function()
 				return tostring(math.random(1, 1e9))
@@ -611,6 +634,16 @@ function Harness.new(options)
 		return player
 	end
 
+	-- Another player as seen from this client (for multiplayer UI tests).
+	function self.addOtherPlayer(userId: number, name: string)
+		local player = newInstance("Player", name)
+		rawset(player, "UserId", userId)
+		player.DisplayName = name
+		player.Parent = PlayersService
+		PlayersService.PlayerAdded:Fire(player)
+		return player
+	end
+
 	function self.addPlayer(userId: number, name: string)
 		local player = newInstance("Player", name)
 		rawset(player, "UserId", userId)
@@ -663,9 +696,13 @@ function Harness.bridge(server, client, serverPlayer)
 				return table.unpack(copy(results), 1, results.n)
 			end
 		else
+			-- Several clients can be bridged to one server (multiplayer tests).
+			remote.Bridges = remote.Bridges or {}
+			remote.Bridges[serverPlayer] = proxy
 			remote.Bridge = function(target, ...)
-				if target == serverPlayer then
-					proxy.OnClientEvent:Fire(table.unpack(copy(table.pack(...))))
+				local clientProxy = remote.Bridges[target]
+				if clientProxy then
+					clientProxy.OnClientEvent:Fire(table.unpack(copy(table.pack(...))))
 				end
 			end
 		end

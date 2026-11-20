@@ -15,7 +15,7 @@ You need a **Windows or Mac computer** with **Roblox Studio** (free). Studio doe
 
 **What you should see:**
 - **Output window** (View → Output):
-  - `[Server] CHOOSE YOUR LIFE started with 5 services` and no red errors.
+  - `[Server] CHOOSE YOUR LIFE started with 7 services` and no red errors.
   - A yellow line saying DataStores are unavailable and the in-memory store is being used. That's expected: an unpublished place can't save, so progress resets each time you press Stop.
   - If filtering isn't available in Studio, a yellow line about text filtering. That's also expected and only happens in Studio.
 - **On screen:** a loading screen, then the main menu. **Play** → choose a name → decision cards.
@@ -37,11 +37,20 @@ You need a **Windows or Mac computer** with **Roblox Studio** (free). Studio doe
 
 **Test** tab → **Device** (the device emulator). Pick e.g. *iPhone 14* or *iPad*, and rotate it with the rotate button. The layout adapts to portrait, landscape and tablet. On PC you can also plug in a gamepad: D-pad/stick to move, **A** to press, **B** to go back or cancel.
 
-### Test with several players (comparisons now, multiplayer later)
+### Test multiplayer (Life Circles, group decisions, city events)
 
-**Test** tab → **Clients and Servers** → choose **2 Players** → **Start**. Studio opens a local server plus two player windows. In each window start a life, then open 🔮 **Future → Compare with players here**.
+1. **Test** tab → **Clients and Servers** → choose **2 Players** → **Start**. Studio opens a local server plus two player windows (Player1 and Player2).
+2. In each window, press **Play** and start a life.
+3. In Player1's window: **🤝** (in the HUD) or the menu's **Play With Friends** → **Invite** next to Player2.
+4. In Player2's window an invite card appears at the top: press **Join**.
+5. Now try:
+   - **🎲 Group decision:** both windows get a vote. Vote in each window and watch the live tally. The majority decides, and each life gets its own result.
+   - **🔮 Group reveal:** both windows play a Group Life Reveal with a "most likely to…" board.
+   - **⚖️ Compare:** side-by-side futures, stats, homes and cars.
+6. **City events** pop up for everyone in the server every 90 seconds in Studio (every 8 minutes in the live game). Press **Join** or **Skip**.
 
-> Test players in Studio aren't Roblox friends. With the default privacy setting (Friends only), they'll see each other as private. To compare them, set Settings → Privacy → *My Life Reveals* to **Everyone** in each window.
+> Test players in Studio aren't Roblox friends. Players in the same Life Circle count as friends for privacy, so they can see each other's futures. Anyone outside your circle sees "keeps their future private" unless you set Settings → Privacy → *My Life Reveals* to **Everyone**.
+> **Invite friends** (the Roblox invite prompt) and **Join their server** only work in the published game, not in Studio.
 
 ---
 

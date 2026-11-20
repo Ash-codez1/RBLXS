@@ -29,6 +29,7 @@ local StatDefinitions = require(Shared.Data.StatDefinitions)
 local LifeStages = require(Shared.Data.LifeStages)
 local Careers = require(Shared.Data.Careers)
 local Traits = require(Shared.Data.Traits)
+local Assets = require(Shared.Data.Assets)
 local Config = require(Shared.Config)
 
 local Conditions = require(script.Parent.Conditions)
@@ -258,6 +259,15 @@ function Reveal.Final(life, nextId: number)
 		end
 	end
 
+	-- Moments shared with friends (group events in a Life Circle).
+	for i = #(life.Shared or {}), 1, -1 do
+		local shared = life.Shared[i]
+		if #moments >= 7 then
+			break
+		end
+		table.insert(moments, ("%s With %s: %s"):format(shared.Icon or "🤝", table.concat(shared.With or {}, " & "), shared.Title))
+	end
+
 	-- Achievements.
 	local achievements = {}
 	if outcomes.Millionaire then
@@ -360,6 +370,16 @@ function Reveal.Card(life, includeStats: boolean)
 		end
 		card.NetWorth = math.floor(Budget.NetWorth(life))
 		card.Overall = round(StatMath.Overall(life.Stats))
+		-- Show off your lifestyle: homes, cars and more.
+		local owned = {}
+		for id in pairs(life.Assets) do
+			local asset = Assets.Info[id]
+			if asset then
+				table.insert(owned, asset.Icon .. " " .. asset.Title)
+			end
+		end
+		table.sort(owned)
+		card.Assets = owned
 	end
 	return card
 end

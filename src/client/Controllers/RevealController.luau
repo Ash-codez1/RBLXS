@@ -638,6 +638,77 @@ function RevealController.PlayFinal(entry, options)
 	return result
 end
 
+-- ===== Group Life Reveal (a Life Circle watches together) =====
+function RevealController.PlayGroup(payload)
+	-- If another reveal is showing (e.g. your own stage reveal), wait for it.
+	local waited = 0
+	while playing and waited < 90 do
+		waited += task.wait(0.25)
+	end
+	if playing then
+		return
+	end
+	begin()
+	local width = math.min(700, size().X - 40)
+
+	local step = newStep()
+	lightRays(step, Theme.Color.AccentAlt)
+	local col = column(step, width)
+	local title = label(col, { Text = "👥  GROUP LIFE REVEAL", FontFace = Theme.Font.Heavy, TextSize = 56, LayoutOrder = 1 })
+	Create.Gradient(Theme.Gradient.Title).Parent = title
+	label(col, { Text = ("Started by %s · %d lives, %d possible futures"):format(payload.StartedBy, #payload.Cards, #payload.Cards), TextColor3 = Theme.Color.TextDim, LayoutOrder = 2 })
+	Anim.Pop(title, 0.6, 0.9)
+	pause(1.8)
+
+	for _, entry in ipairs(payload.Cards) do
+		if session.Skip then
+			break
+		end
+		local s2 = newStep()
+		local c2 = column(s2, width)
+		label(c2, { Text = entry.DisplayName .. (if entry.IsYou then " (you)" else ""), FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H1, LayoutOrder = 1 })
+		if entry.Hidden or not entry.Card then
+			label(c2, { Text = if entry.NoLife then "Between lives right now." else "🔒 Keeps their future private.", TextColor3 = Theme.Color.TextDim, TextSize = Theme.TextSize.H3, LayoutOrder = 2 })
+			pause(1.2)
+		else
+			local card = entry.Card
+			label(c2, { Text = ("%s · age %d · %s · %s"):format(card.LifeName, card.Age, card.StageName, card.Career), TextColor3 = Theme.Color.TextDim, LayoutOrder = 2 })
+			local starters = {}
+			local positives = Futures.Sorted(card.Predictions)
+			for i = 1, math.min(3, #positives) do
+				table.insert(starters, futureBar(c2, positives[i], nil, 10 + i, width))
+			end
+			for _, start in ipairs(starters) do
+				start(0.6)
+				pause(0.25)
+			end
+			local headline = label(c2, { Text = card.Headline, FontFace = Theme.Font.Bold, TextColor3 = Theme.Color.Gold, LayoutOrder = 20 })
+			typewrite(headline, 60)
+			pause(1.6)
+		end
+	end
+
+	if not session.Skip and #payload.Superlatives > 0 then
+		local s3 = newStep()
+		lightRays(s3, Theme.Color.Gold)
+		local c3 = column(s3, width)
+		label(c3, { Text = "MOST LIKELY TO…", FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H1, LayoutOrder = 1 })
+		for i = 1, math.min(6, #payload.Superlatives) do
+			local s = payload.Superlatives[i]
+			local info = Futures.Info[s.Id]
+			local line = label(c3, { Text = ("%s %s: <b>%s</b> (%d%%)"):format(info.Icon, info.Title, s.DisplayName, s.Pct), RichText = true, TextSize = Theme.TextSize.H3, LayoutOrder = 1 + i })
+			Anim.Pop(line, 0.7, 0.3)
+			pause(0.5)
+		end
+		pause(2)
+	end
+
+	endCard("Same start. Different futures.", "Keep choosing. Every one of these futures can still change.", {
+		{ Name = "RevealGroupClose", Text = "Close", Icon = "👍", Result = "Close", Width = 240 },
+	})
+	finish()
+end
+
 function RevealController.Init()
 	gui = Create("ScreenGui", {
 		Name = "CYL_Reveal",

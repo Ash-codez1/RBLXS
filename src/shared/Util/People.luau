@@ -94,6 +94,37 @@ function People.Add(life, role: string, rng, bond: number?)
 	return person
 end
 
+--[[
+	Adds someone with a fixed name, e.g. a real friend's character after a
+	group event. `playerUserId` links them to that player so they are only
+	added once. Returns the person, or nil if already present / no room.
+]]
+function People.AddNamed(life, role: string, name: string, playerUserId: number?, bond: number?)
+	if playerUserId then
+		for _, person in ipairs(life.People) do
+			if person.PlayerUserId == playerUserId then
+				return nil
+			end
+		end
+	end
+	if (role == "Friend" or role == "BestFriend") and life.Relationships.Friends >= People.MaxFriends then
+		return nil
+	end
+	life.NextPersonId = (life.NextPersonId or 1)
+	local person = {
+		Id = "p" .. life.NextPersonId,
+		Name = name,
+		Role = role,
+		Bond = bond or People.Roles[role].StartBond,
+		BornAge = life.Age,
+		PlayerUserId = playerUserId,
+	}
+	life.NextPersonId += 1
+	table.insert(life.People, person)
+	People.Sync(life)
+	return person
+end
+
 function People.Remove(life, person)
 	local index = table.find(life.People, person)
 	if index then

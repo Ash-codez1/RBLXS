@@ -17,6 +17,17 @@ return {
 		Notify = {},
 		-- Generic gameplay signals (S->C) other systems push, e.g. "LifeReveal", "StageChanged".
 		GameEvent = {},
+
+		-- ===== Life Circles (PartyService), all S->C =====
+		PartyUpdate = {}, -- circle state, or false when not in a circle
+		PartyInviteReceived = {}, -- { InviteId, FromUserId, FromName, Seconds }
+		GroupEvent = {}, -- a group decision to vote on
+		GroupVote = {}, -- live vote tally
+		GroupEventResult = {}, -- what the group chose and what it meant for YOUR life
+		GroupReveal = {}, -- a group Life Reveal session
+		-- ===== City events (CityEventService), S->C =====
+		CityEvent = {}, -- a server-wide invitation
+		CityEventSummary = {}, -- how many people joined
 	},
 
 	Functions = {
@@ -55,5 +66,18 @@ return {
 		-- ===== Life Reveal (RevealService) =====
 		-- C->S: () -> cards for every player in the server (privacy-filtered)
 		GetLifeCards = { RateLimit = { Rate = 1, Burst = 3 } },
+
+		-- ===== Life Circles (PartyService) =====
+		PartyInvite = { RateLimit = { Rate = 1, Burst = 4 } }, -- (targetUserId)
+		PartyRespond = { RateLimit = { Rate = 2, Burst = 4 } }, -- (inviteId, accept)
+		PartyLeave = { RateLimit = { Rate = 1, Burst = 3 } },
+		PartyKick = { RateLimit = { Rate = 1, Burst = 3 } }, -- (userId)
+		PartyStartEvent = { RateLimit = { Rate = 0.5, Burst = 2 } },
+		PartyVote = { RateLimit = { Rate = 3, Burst = 6 } }, -- (eventId, choiceId)
+		PartyStartReveal = { RateLimit = { Rate = 0.5, Burst = 2 } },
+		GetPartyState = { RateLimit = { Rate = 1, Burst = 3 } },
+		JoinFriendServer = { RateLimit = { Rate = 0.2, Burst = 2 } }, -- (placeId, jobId)
+		-- ===== City events (CityEventService) =====
+		CityEventRespond = { RateLimit = { Rate = 1, Burst = 3 } }, -- (eventId, join)
 	},
 }

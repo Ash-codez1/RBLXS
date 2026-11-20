@@ -258,6 +258,59 @@ for _, twist in ipairs(require(script.Parent:WaitForChild("Twists"))) do
 	validateEffects(id, twist.Effects, { MinMoney = math.huge })
 end
 
+-- ===== Group scenarios (voted on by a Life Circle) =====
+Scenarios.Group = {}
+Scenarios.GroupById = {}
+for _, scenario in ipairs(require(script.Parent:WaitForChild("GroupScenarios"))) do
+	local id = scenario.Id
+	if type(id) ~= "string" or Scenarios.GroupById[id] then
+		issue("invalid or duplicate group scenario Id " .. tostring(id))
+		continue
+	end
+	local choices = scenario.Choices or {}
+	if #choices < 3 or #choices > 5 then
+		issue(id .. ": group scenarios need 3–5 choices")
+	end
+	validateRequires(id, scenario.Requires)
+	scenario.ChoiceById = {}
+	local open = 0
+	for _, choice in ipairs(choices) do
+		if scenario.ChoiceById[choice.Id] then
+			issue(id .. ": duplicate choice " .. tostring(choice.Id))
+		end
+		scenario.ChoiceById[choice.Id] = choice
+		if not choice.Requires then
+			open += 1
+		end
+		validateRequires(id .. "." .. tostring(choice.Id), choice.Requires)
+		local min = math.max(scenario.Requires and scenario.Requires.MinMoney or 0, choice.Requires and choice.Requires.MinMoney or 0)
+		validateEffects(id .. "." .. tostring(choice.Id), choice.Effects, { MinMoney = min })
+	end
+	if open < 1 then
+		issue(id .. ": needs at least 1 always-available choice")
+	end
+	Scenarios.GroupById[id] = scenario
+	table.insert(Scenarios.Group, scenario)
+end
+
+-- ===== City events (server-wide) =====
+Scenarios.City = {}
+Scenarios.CityById = {}
+for _, event in ipairs(require(script.Parent:WaitForChild("CityEvents"))) do
+	local id = event.Id
+	if type(id) ~= "string" or Scenarios.CityById[id] then
+		issue("invalid or duplicate city event Id " .. tostring(id))
+		continue
+	end
+	if type(event.JoinText) ~= "string" or type(event.SkipText) ~= "string" then
+		issue(id .. ": needs JoinText and SkipText")
+	end
+	validateRequires(id, event.Requires)
+	validateEffects(id, event.Effects, { MinMoney = event.Requires and event.Requires.MinMoney or 0 })
+	Scenarios.CityById[id] = event
+	table.insert(Scenarios.City, event)
+end
+
 function Scenarios.CountForStage(stage: number): number
 	local n = 0
 	for _, scenario in ipairs(Scenarios.All) do

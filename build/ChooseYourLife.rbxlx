@@ -47,6 +47,11 @@ Config.StartingMoney = 0 -- in-life money, resets every new life
 Config.EventChance = 0.28 -- chance of a random life event after each decision
 Config.TwistChance = 0.22 -- chance of a twist at each stage's Life Reveal
 
+-- ===== Multiplayer =====
+Config.CityEventInterval = 480 -- seconds between server-wide city events (90 in Studio)
+Config.CityEventJoinSeconds = 45
+Config.CityEventMinPlayers = 2 -- with an active life (1 in Studio, so solo testing works)
+
 -- ===== Networking =====
 -- Default token-bucket limits for remotes (requests per second, burst size).
 Config.DefaultRateLimit = { Rate = 4, Burst = 8 }
@@ -330,6 +335,7 @@ function DataTemplate.NewLife(name: string, seed: number)
 		Loans = {}, -- array of { Kind = "Student"|"Mortgage", Balance, Rate, Payment }
 		ActionTurn = -1, -- decision count when ActionsUsed was last reset
 		ActionsUsed = 0, -- People/Finance actions used since the last decision
+		Shared = {}, -- moments shared with other players: { Title, Icon, With = {names}, Age } (capped)
 	}
 	-- Everyone starts with two parents.
 	local rng = Random.new(seed % 2147483646 + 1)
@@ -892,6 +898,17 @@ return {
 		Notify = {},
 		-- Generic gameplay signals (S->C) other systems push, e.g. "LifeReveal", "StageChanged".
 		GameEvent = {},
+
+		-- ===== Life Circles (PartyService), all S->C =====
+		PartyUpdate = {}, -- circle state, or false when not in a circle
+		PartyInviteReceived = {}, -- { InviteId, FromUserId, FromName, Seconds }
+		GroupEvent = {}, -- a group decision to vote on
+		GroupVote = {}, -- live vote tally
+		GroupEventResult = {}, -- what the group chose and what it meant for YOUR life
+		GroupReveal = {}, -- a group Life Reveal session
+		-- ===== City events (CityEventService), S->C =====
+		CityEvent = {}, -- a server-wide invitation
+		CityEventSummary = {}, -- how many people joined
 	},
 
 	Functions = {
@@ -930,6 +947,19 @@ return {
 		-- ===== Life Reveal (RevealService) =====
 		-- C->S: () -> cards for every player in the server (privacy-filtered)
 		GetLifeCards = { RateLimit = { Rate = 1, Burst = 3 } },
+
+		-- ===== Life Circles (PartyService) =====
+		PartyInvite = { RateLimit = { Rate = 1, Burst = 4 } }, -- (targetUserId)
+		PartyRespond = { RateLimit = { Rate = 2, Burst = 4 } }, -- (inviteId, accept)
+		PartyLeave = { RateLimit = { Rate = 1, Burst = 3 } },
+		PartyKick = { RateLimit = { Rate = 1, Burst = 3 } }, -- (userId)
+		PartyStartEvent = { RateLimit = { Rate = 0.5, Burst = 2 } },
+		PartyVote = { RateLimit = { Rate = 3, Burst = 6 } }, -- (eventId, choiceId)
+		PartyStartReveal = { RateLimit = { Rate = 0.5, Burst = 2 } },
+		GetPartyState = { RateLimit = { Rate = 1, Burst = 3 } },
+		JoinFriendServer = { RateLimit = { Rate = 0.2, Burst = 2 } }, -- (placeId, jobId)
+		-- ===== City events (CityEventService) =====
+		CityEventRespond = { RateLimit = { Rate = 1, Burst = 3 } }, -- (eventId, join)
 	},
 }
 ]]></string>
@@ -1756,6 +1786,37 @@ function People.Add(life, role: string, rng, bond: number?)
 	return person
 end
 
+--[[
+	Adds someone with a fixed name, e.g. a real friend's character after a
+	group event. `playerUserId` links them to that player so they are only
+	added once. Returns the person, or nil if already present / no room.
+]]
+function People.AddNamed(life, role: string, name: string, playerUserId: number?, bond: number?)
+	if playerUserId then
+		for _, person in ipairs(life.People) do
+			if person.PlayerUserId == playerUserId then
+				return nil
+			end
+		end
+	end
+	if (role == "Friend" or role == "BestFriend") and life.Relationships.Friends >= People.MaxFriends then
+		return nil
+	end
+	life.NextPersonId = (life.NextPersonId or 1)
+	local person = {
+		Id = "p" .. life.NextPersonId,
+		Name = name,
+		Role = role,
+		Bond = bond or People.Roles[role].StartBond,
+		BornAge = life.Age,
+		PlayerUserId = playerUserId,
+	}
+	life.NextPersonId += 1
+	table.insert(life.People, person)
+	People.Sync(life)
+	return person
+end
+
 function People.Remove(life, person)
 	local index = table.find(life.People, person)
 	if index then
@@ -2091,6 +2152,46 @@ return TableUtil
         </Properties>
         <Item class="ModuleScript" referent="27">
           <Properties>
+            <string name="Name">CityEvents</string>
+            <string name="Source"><![CDATA[--[[
+	City events  (ServerScriptService.Server.Content.CityEvents)
+	Server-wide shared events (Services/CityEventService). Every few minutes
+	the whole server gets the same invitation; each player chooses to join or
+	skip, and effects apply to their own life only. Requires is per player.
+	Outcomes (if any) are rolled once for the city, so everyone who joins
+	shares the same result.
+]]
+
+return {
+	{ Id = "CE_Festival", Icon = "🎪", Title = "City Festival", Description = "Music, food stalls and fireworks fill the city centre tonight!",
+		JoinText = "Go to the festival", SkipText = "Stay in",
+		Effects = { Stats = { Happiness = 5, Relationships = 3 }, Story = "{name} danced at the city festival under the fireworks." } },
+	{ Id = "CE_Marathon", Icon = "🏃", Title = "The City Marathon", Description = "Thousands are lining up for the annual city marathon.",
+		Requires = { MinAge = 12 }, JoinText = "Run it", SkipText = "Watch from the sidelines",
+		Effects = { Stats = { Health = 6, Reputation = 2, Happiness = 2 }, Story = "{name} ran the city marathon and crossed the finish line." } },
+	{ Id = "CE_Heatwave", Icon = "☀️", Title = "Heatwave!", Description = "It's the hottest day of the year. The whole city heads to the parks and pools.",
+		JoinText = "Head to the lido", SkipText = "Stay cool indoors",
+		Effects = { Stats = { Happiness = 4, Health = 2 }, Story = "{name} spent the heatwave splashing in the city lido." } },
+	{ Id = "CE_Market", Icon = "📈", Title = "Market Frenzy", Description = "Everyone in the city is talking about a stock that's shooting up.",
+		Requires = { MinAge = 18, MinMoney = 2000 }, JoinText = "Buy in ($1,000)", SkipText = "Ignore the hype",
+		Effects = { Money = -1000, Story = "{name} joined the market frenzy.",
+			Outcomes = { { Chance = 0.5, Money = 2600, Story = "The stock soared. Profit!" }, { Chance = 0.5, Story = "The bubble burst the next day." } } } },
+	{ Id = "CE_Cleanup", Icon = "🧹", Title = "Great City Clean-Up", Description = "Volunteers are cleaning up parks and beaches across the city.",
+		JoinText = "Volunteer", SkipText = "Not today",
+		Effects = { Stats = { Reputation = 5, Health = 1 }, Traits = { Kind = 1 }, Story = "{name} helped clean up the city's parks." } },
+	{ Id = "CE_Quiz", Icon = "❓", Title = "City Quiz Night", Description = "The biggest pub quiz in the city, live on local TV!",
+		Requires = { MinAge = 10 }, JoinText = "Enter the quiz", SkipText = "Skip it",
+		Effects = { Stats = { Intelligence = 2 }, Story = "{name} entered the city quiz night.",
+			Outcomes = { { Chance = 0.3, Stats = { Popularity = 6, Intelligence = 3 }, Story = "And won it on live TV!" } } } },
+	{ Id = "CE_Concert", Icon = "🎤", Title = "Free Concert in the Park", Description = "A superstar is playing a surprise free concert in the city park!",
+		JoinText = "Go!", SkipText = "Crowds aren't my thing",
+		Effects = { Stats = { Happiness = 7, Popularity = 2 }, Story = "{name} sang along at a surprise free concert in the park." } },
+}
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="28">
+          <Properties>
             <string name="Name">Events</string>
             <string name="Source"><![CDATA[--[[
 	Random life events  (ServerScriptService.Server.Content.Events)
@@ -2210,7 +2311,255 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="28">
+        <Item class="ModuleScript" referent="29">
+          <Properties>
+            <string name="Name">GroupScenarios</string>
+            <string name="Source"><![CDATA[--[[
+	Group scenarios  (ServerScriptService.Server.Content.GroupScenarios)
+	Decisions a Life Circle (party) makes together by voting (Services/PartyService).
+
+	• Requires (scenario and choice) must pass for EVERY member, so a choice
+	  that costs $5,000 is only open if everyone can afford it.
+	• The winning choice's Effects are applied to each member's own life,
+	  independently (their own stats, traits and money).
+	• Chance Outcomes are rolled ONCE for the whole group: friends who start a
+	  business together share its fate.
+	Group events don't use up a decision or change anyone's age.
+]]
+
+return {
+	{
+		Id = "G_DayOut", Icon = "🎡", Title = "A Day Out Together",
+		Description = "Your whole crew has a free day. Where are you going?",
+		Weight = 1.2,
+		Choices = {
+			{ Id = "ThemePark", Text = "Theme park", Description = "Rollercoasters and candyfloss.",
+				Effects = { Money = -40, Stats = { Happiness = 6, Relationships = 4 }, Story = "{name} and friends screamed their way round the theme park." } },
+			{ Id = "Museum", Text = "Science museum", Description = "Dinosaurs and space rockets.",
+				Effects = { Stats = { Intelligence = 5, Relationships = 3 }, Story = "{name} and friends spent the day at the science museum." } },
+			{ Id = "Beach", Text = "The beach", Description = "Sun, sea and sandcastles.",
+				Effects = { Stats = { Health = 4, Happiness = 5, Relationships = 3 }, Story = "{name} and friends had a perfect day at the beach." } },
+			{ Id = "Games", Text = "Gaming marathon", Description = "Snacks. Controllers. Glory.",
+				Effects = { Stats = { Happiness = 6, Relationships = 4, Health = -2 }, Story = "{name} and friends played games until sunrise." } },
+		},
+	},
+	{
+		Id = "G_Sleepover", Icon = "🛏️", Title = "The Sleepover",
+		Description = "Everyone's staying over tonight! Sleeping bags, snacks and a torch.",
+		Requires = { MaxAge = 15 },
+		Choices = {
+			{ Id = "Fort", Text = "Build a giant pillow fort", Description = "The best fort ever built.",
+				Effects = { Stats = { Happiness = 6, Relationships = 4 }, Traits = { Creative = 1 }, Story = "{name} and friends built a pillow fort the size of the living room." } },
+			{ Id = "Movie", Text = "Movie marathon", Description = "Popcorn till midnight.",
+				Effects = { Stats = { Happiness = 5, Relationships = 3, Health = -1 }, Story = "{name} and friends watched films until they fell asleep." } },
+			{ Id = "Stories", Text = "Torch-light stories", Description = "Spooky, silly or both.",
+				Effects = { Stats = { Relationships = 6, Intelligence = 1 }, Story = "{name} and friends told stories by torch-light." } },
+			{ Id = "Sleep", Text = "Actually go to sleep on time", Description = "The grown-ups will be impressed.",
+				Effects = { Stats = { Health = 3, Reputation = 2 }, Bond = { Parent = 3 }, Story = "{name}'s sleepover went to bed on time. A miracle." } },
+		},
+	},
+	{
+		Id = "G_Playground", Icon = "🛝", Title = "Playground Adventure",
+		Description = "The whole gang is at the park. What's the game today?",
+		Requires = { MaxAge = 12 },
+		Choices = {
+			{ Id = "Tag", Text = "A huge game of tag", Description = "You're it!",
+				Effects = { Stats = { Health = 5, Happiness = 4, Relationships = 3 }, Story = "{name} and friends played tag until they collapsed laughing." } },
+			{ Id = "Pirates", Text = "Pirates on the climbing frame", Description = "Arrr!",
+				Effects = { Stats = { Happiness = 5 }, Traits = { Creative = 1 }, Story = "{name} and friends turned the climbing frame into a pirate ship." } },
+			{ Id = "Bugs", Text = "Hunt for bugs and beetles", Description = "Nature detectives.",
+				Effects = { Stats = { Intelligence = 4, Happiness = 3 }, Story = "{name} and friends found eleven kinds of beetle." } },
+		},
+	},
+	{
+		Id = "G_EscapeRoom", Icon = "🔐", Title = "Escape Room Challenge",
+		Description = "Sixty minutes. One locked room. Can your group get out?",
+		Requires = { MinAge = 8 },
+		Choices = {
+			{ Id = "Team", Text = "Work as a team", Description = "Everyone shares every clue.",
+				Effects = { Stats = { Relationships = 5 }, Story = "{name}'s group worked through every clue together.",
+					Outcomes = { { Chance = 0.65, Stats = { Intelligence = 4, Happiness = 5 }, Story = "They escaped with two minutes to spare!" } } } },
+			{ Id = "Leader", Text = "Let the smartest one lead", Description = "Follow the genius.",
+				Effects = { Stats = { Intelligence = 3 }, Story = "{name}'s group followed their cleverest member.",
+					Outcomes = { { Chance = 0.5, Stats = { Happiness = 5 }, Story = "Out in record time!" }, { Chance = 0.5, Stats = { Relationships = -3 }, Story = "Some people felt left out. They didn't escape." } } } },
+			{ Id = "Rush", Text = "Smash through as fast as possible", Description = "Speed over thinking.",
+				Effects = { Stats = { Happiness = 3 }, Story = "{name}'s group tore through the room at top speed.",
+					Outcomes = { { Chance = 0.3, Stats = { Popularity = 5 }, Story = "Somehow they set the venue's speed record!" }, { Chance = 0.7, Stats = { Happiness = -2 }, Story = "They missed the final clue and the time ran out." } } } },
+		},
+	},
+	{
+		Id = "G_TalentShow", Icon = "🎙️", Title = "Talent Show",
+		Description = "There's a talent show this weekend. Should your group enter together?",
+		Requires = { MaxAge = 30 },
+		Choices = {
+			{ Id = "Sing", Text = "Sing a song together", Description = "Harmonies!",
+				Effects = { Stats = { Popularity = 3, Happiness = 3 }, Story = "{name}'s group sang together on stage.",
+					Outcomes = { { Chance = 0.35, Stats = { Popularity = 8, Happiness = 6 }, Flags = { "StageStar" }, Story = "They won first prize!" } } } },
+			{ Id = "Comedy", Text = "Perform a comedy sketch", Description = "Make them laugh.",
+				Effects = { Stats = { Popularity = 5, Happiness = 4 }, Story = "{name}'s group had the whole audience in stitches." } },
+			{ Id = "Dance", Text = "Do a dance routine", Description = "Choreographed chaos.",
+				Effects = { Stats = { Health = 3, Popularity = 4 }, Story = "{name}'s group danced their hearts out." } },
+			{ Id = "Watch", Text = "Just watch and cheer", Description = "Front row seats.",
+				Effects = { Stats = { Happiness = 2, Relationships = 3 }, Story = "{name}'s group cheered everyone on from the front row." } },
+		},
+	},
+	{
+		Id = "G_Band", Icon = "🎸", Title = "Start a Band Together",
+		Description = "Someone found an old drum kit. You could start a band…",
+		Requires = { MinAge = 12 },
+		Choices = {
+			{ Id = "Rock", Text = "A loud rock band", Description = "Guitars up to eleven.",
+				Effects = { Stats = { Happiness = 5, Popularity = 3 }, Flags = { "Band" }, Story = "{name} formed a rock band with friends.",
+					Outcomes = { { Chance = 0.25, Stats = { Popularity = 8 }, Flags = { "LocalLegends" }, Story = "Their first gig went viral locally!" } } } },
+			{ Id = "Pop", Text = "A pop group", Description = "Catchy choruses, matching outfits.",
+				Effects = { Stats = { Popularity = 5, Happiness = 3 }, Flags = { "Band" }, Story = "{name} formed a pop group with friends." } },
+			{ Id = "Jam", Text = "Just jam for fun", Description = "No pressure.",
+				Effects = { Stats = { Happiness = 6, Relationships = 4 }, Story = "{name} and friends jammed every weekend just for fun." } },
+			{ Id = "No", Text = "Nobody can play anything", Description = "Be realistic.",
+				Effects = { Stats = { Happiness = 1 }, Story = "{name}'s group decided music wasn't their thing." } },
+		},
+	},
+	{
+		Id = "G_Camping", Icon = "⛺", Title = "Camping Trip",
+		Description = "Tents, a campfire and no Wi-Fi for three days.",
+		Requires = { MinAge = 8 },
+		Choices = {
+			{ Id = "Hike", Text = "Hike to the summit", Description = "Big views, sore legs.",
+				Effects = { Stats = { Health = 6, Happiness = 3 }, Traits = { Adventurous = 1 }, Story = "{name} and friends hiked to the summit at sunrise." } },
+			{ Id = "Lake", Text = "Swim and fish at the lake", Description = "Relax by the water.",
+				Effects = { Stats = { Happiness = 5, Health = 3 }, Story = "{name} and friends spent lazy days by the lake." } },
+			{ Id = "Stories", Text = "Ghost stories all night", Description = "Who'll scream first?",
+				Effects = { Stats = { Relationships = 6, Happiness = 4, Health = -1 }, Story = "{name} and friends told ghost stories until dawn." } },
+			{ Id = "Cancel", Text = "Cancel: it might rain", Description = "Stay dry.",
+				Effects = { Stats = { Happiness = -2 }, Story = "{name}'s group cancelled the trip. It was sunny all weekend." } },
+		},
+	},
+	{
+		Id = "G_SchoolProject", Icon = "🧪", Title = "Group Project",
+		Description = "Your group has to make a project together for school.",
+		Requires = { MaxAge = 18 },
+		Choices = {
+			{ Id = "Science", Text = "A science fair volcano", Description = "Baking soda and ambition.",
+				Effects = { Stats = { Intelligence = 4 }, Story = "{name}'s group built an erupting volcano.",
+					Outcomes = { { Chance = 0.4, Stats = { Intelligence = 4, Reputation = 4 }, Story = "It won the science fair!" } } } },
+			{ Id = "Film", Text = "Make a short film", Description = "Lights, camera, action.",
+				Effects = { Stats = { Popularity = 4, Happiness = 4 }, Traits = { Creative = 1 }, Story = "{name}'s group made a short film the whole class loved." } },
+			{ Id = "Last", Text = "Leave it to the last minute", Description = "It'll be fine.",
+				Effects = { Stats = { Happiness = 2 }, Story = "{name}'s group left it to the night before.",
+					Outcomes = { { Chance = 0.5, Stats = { Intelligence = -3, Reputation = -2 }, Story = "It was not fine." } } } },
+		},
+	},
+	{
+		Id = "G_Charity", Icon = "🎗️", Title = "Charity Challenge",
+		Description = "A local charity needs fundraisers. Your group wants to help.",
+		Requires = { MinAge = 10 },
+		Choices = {
+			{ Id = "Run", Text = "A sponsored run", Description = "Run for a cause.",
+				Effects = { Stats = { Health = 5, Reputation = 5 }, Traits = { Kind = 1 }, Story = "{name} and friends ran 10k for charity." } },
+			{ Id = "Bake", Text = "A bake sale", Description = "Cakes for good.",
+				Effects = { Stats = { Reputation = 4, Happiness = 3 }, Story = "{name}'s group's bake sale sold out in an hour." } },
+			{ Id = "Gala", Text = "Host a fancy gala", Requires = { MinAge = 21 }, LockHint = "Everyone must be 21+", Description = "Black tie, big donations.",
+				Effects = { Money = -300, Stats = { Reputation = 8, Popularity = 4 }, Story = "{name}'s group hosted a gala that raised thousands." } },
+			{ Id = "Skip", Text = "Maybe another time", Description = "Too busy.",
+				Effects = { Stats = { Reputation = -2 }, Story = "{name}'s group didn't take part." } },
+		},
+	},
+	{
+		Id = "G_Business", Icon = "🤝", Title = "Start a Business Together",
+		Description = "Your group has an idea. Everyone would put in money and share the risk.",
+		Requires = { MinAge = 19 },
+		Choices = {
+			{ Id = "FoodTruck", Text = "A food truck", Requires = { MinMoney = 2000 }, LockHint = "Everyone needs $2,000", Description = "Street food, split four ways.",
+				Effects = { Money = -2000, Stats = { Happiness = 3 }, Story = "{name} and friends launched a food truck together.",
+					Outcomes = { { Chance = 0.55, Money = 9000, Stats = { Happiness = 4, Career = 3 }, Story = "Queues round the block! Everyone made a profit." }, { Chance = 0.45, Stats = { Happiness = -3 }, Story = "It never quite took off." } } } },
+			{ Id = "Startup", Text = "A tech startup", Requires = { MinMoney = 10000 }, LockHint = "Everyone needs $10,000", Description = "Moonshot.",
+				Effects = { Money = -10000, Stats = { Career = 3 }, Traits = { Ambitious = 1 }, Story = "{name} and friends founded a startup together.",
+					Outcomes = { { Chance = 0.3, Money = 90000, Stats = { Reputation = 6, Happiness = 6 }, Flags = { "StartupFounder" }, Story = "A huge company bought it. They all got rich!" }, { Chance = 0.7, Stats = { Happiness = -5 }, Story = "The money ran out." } } } },
+			{ Id = "Cafe", Text = "A cosy café", Requires = { MinMoney = 4000 }, LockHint = "Everyone needs $4,000", Description = "Good coffee, good vibes.",
+				Effects = { Money = -4000, Stats = { Happiness = 4, Relationships = 3 }, Story = "{name} and friends opened a café together.",
+					Outcomes = { { Chance = 0.5, Money = 11000, Story = "It became the neighbourhood's favourite spot." } } } },
+			{ Id = "No", Text = "Too risky. Stay friends, not partners", Description = "Protect the friendship.",
+				Effects = { Stats = { Relationships = 3 }, Story = "{name}'s group decided not to mix money and friendship." } },
+		},
+	},
+	{
+		Id = "G_RoadTrip", Icon = "🚐", Title = "Road Trip!",
+		Description = "One van, one playlist, a long open road.",
+		Requires = { MinAge = 18 },
+		Choices = {
+			{ Id = "Coast", Text = "The coast road", Description = "Cliffs and sunsets.",
+				Effects = { Money = -500, Stats = { Happiness = 7, Relationships = 4 }, Story = "{name} and friends drove the coast road with the windows down." } },
+			{ Id = "Festivals", Text = "Festival hopping", Description = "Music every night.",
+				Effects = { Money = -700, Stats = { Popularity = 5, Happiness = 6, Health = -2 }, Story = "{name} and friends danced at three festivals in a week." } },
+			{ Id = "Parks", Text = "National parks", Description = "Mountains, canyons, stars.",
+				Effects = { Money = -400, Stats = { Health = 5, Happiness = 5 }, Traits = { Adventurous = 1 }, Story = "{name} and friends camped under the stars in national parks." } },
+			{ Id = "Stay", Text = "Stay home and save money", Description = "Next year.",
+				Effects = { Money = 200, Stats = { Happiness = -2 }, Story = "{name}'s group stayed home." } },
+		},
+	},
+	{
+		Id = "G_Holiday", Icon = "🏝️", Title = "Holiday Together",
+		Description = "The group chat has decided: you're all going away together.",
+		Requires = { MinAge = 18 },
+		Choices = {
+			{ Id = "Resort", Text = "Beach resort", Requires = { MinMoney = 2000 }, LockHint = "Everyone needs $2,000", Description = "Pools and sunshine.",
+				Effects = { Money = -2000, Stats = { Happiness = 9, Health = 3, Relationships = 4 }, Story = "{name} and friends spent a blissful week at a beach resort." } },
+			{ Id = "City", Text = "City break", Requires = { MinMoney = 1200 }, LockHint = "Everyone needs $1,200", Description = "Culture and cafés.",
+				Effects = { Money = -1200, Stats = { Intelligence = 3, Happiness = 6 }, Story = "{name} and friends explored a beautiful old city." } },
+			{ Id = "Trek", Text = "Adventure trek", Description = "Backpacks and blisters.",
+				Effects = { Money = -600, Stats = { Health = 7, Happiness = 4 }, Traits = { Adventurous = 1 }, Story = "{name} and friends trekked through the mountains." } },
+			{ Id = "Staycation", Text = "Staycation", Description = "Cheap and cheerful.",
+				Effects = { Stats = { Happiness = 3, Relationships = 3 }, Story = "{name} and friends had a staycation full of board games." } },
+		},
+	},
+	{
+		Id = "G_Invest", Icon = "📊", Title = "A Hot Investment Tip",
+		Description = "Someone in the group heard about a 'can't-miss' investment.",
+		Requires = { MinAge = 21, MinMoney = 6000 },
+		Choices = {
+			{ Id = "Pool", Text = "Everyone puts in $5,000", Description = "Go big together.",
+				Effects = { Money = -5000, Story = "{name}'s group pooled their money into the tip.",
+					Outcomes = { { Chance = 0.45, Money = 16000, Stats = { Happiness = 6 }, Story = "It paid off, big time!" }, { Chance = 0.55, Stats = { Happiness = -6 }, Story = "It was a dud. The money was gone." } } } },
+			{ Id = "Little", Text = "Just put in a little", Description = "$1,000 each.",
+				Effects = { Money = -1000, Story = "{name}'s group put a little in.",
+					Outcomes = { { Chance = 0.6, Money = 2500, Story = "A tidy profit." } } } },
+			{ Id = "Ignore", Text = "Sounds like a scam", Description = "Walk away.",
+				Effects = { Stats = { Intelligence = 2 }, Story = "{name}'s group smelled a scam and walked away." } },
+		},
+	},
+	{
+		Id = "G_Volunteer", Icon = "🧱", Title = "Volunteer Week",
+		Description = "A charity is looking for groups to volunteer for a week.",
+		Requires = { MinAge = 14 },
+		Choices = {
+			{ Id = "Build", Text = "Build homes", Description = "Hammers and hard hats.",
+				Effects = { Stats = { Reputation = 7, Health = 2 }, Traits = { Kind = 1 }, Story = "{name} and friends helped build homes for families in need." } },
+			{ Id = "Animals", Text = "Animal rescue", Description = "Puppies need you.",
+				Effects = { Stats = { Happiness = 6, Reputation = 4 }, Traits = { Kind = 1 }, Story = "{name} and friends spent a week at an animal rescue centre." } },
+			{ Id = "Teach", Text = "Teach younger kids", Description = "Pass it on.",
+				Effects = { Stats = { Reputation = 5, Intelligence = 2 }, Story = "{name} and friends ran a summer school for younger kids." } },
+			{ Id = "Skip", Text = "Not this time", Description = "Busy week.",
+				Effects = { Stats = { Reputation = -1 }, Story = "{name}'s group sat this one out." } },
+		},
+	},
+	{
+		Id = "G_Reunion", Icon = "🥳", Title = "The Big Reunion",
+		Description = "It's been years. Time for a reunion with the whole gang.",
+		Requires = { MinAge = 30 },
+		Choices = {
+			{ Id = "Party", Text = "Throw a huge party", Description = "Like old times.",
+				Effects = { Money = -300, Stats = { Relationships = 8, Happiness = 6 }, Bond = { Friend = 6, BestFriend = 6 }, Story = "{name}'s reunion party went on until 4am." } },
+			{ Id = "Dinner", Text = "A quiet dinner", Description = "Proper catch-ups.",
+				Effects = { Stats = { Relationships = 6, Happiness = 4 }, Story = "{name} and friends talked for hours over dinner." } },
+			{ Id = "Karaoke", Text = "Karaoke night", Description = "Questionable singing guaranteed.",
+				Effects = { Stats = { Happiness = 7, Popularity = 3 }, Story = "{name}'s group murdered every song on the karaoke list." } },
+		},
+	},
+}
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="30">
           <Properties>
             <string name="Name">Scenarios</string>
             <string name="Source"><![CDATA[--[[
@@ -2473,6 +2822,59 @@ for _, twist in ipairs(require(script.Parent:WaitForChild("Twists"))) do
 	validateEffects(id, twist.Effects, { MinMoney = math.huge })
 end
 
+-- ===== Group scenarios (voted on by a Life Circle) =====
+Scenarios.Group = {}
+Scenarios.GroupById = {}
+for _, scenario in ipairs(require(script.Parent:WaitForChild("GroupScenarios"))) do
+	local id = scenario.Id
+	if type(id) ~= "string" or Scenarios.GroupById[id] then
+		issue("invalid or duplicate group scenario Id " .. tostring(id))
+		continue
+	end
+	local choices = scenario.Choices or {}
+	if #choices < 3 or #choices > 5 then
+		issue(id .. ": group scenarios need 3–5 choices")
+	end
+	validateRequires(id, scenario.Requires)
+	scenario.ChoiceById = {}
+	local open = 0
+	for _, choice in ipairs(choices) do
+		if scenario.ChoiceById[choice.Id] then
+			issue(id .. ": duplicate choice " .. tostring(choice.Id))
+		end
+		scenario.ChoiceById[choice.Id] = choice
+		if not choice.Requires then
+			open += 1
+		end
+		validateRequires(id .. "." .. tostring(choice.Id), choice.Requires)
+		local min = math.max(scenario.Requires and scenario.Requires.MinMoney or 0, choice.Requires and choice.Requires.MinMoney or 0)
+		validateEffects(id .. "." .. tostring(choice.Id), choice.Effects, { MinMoney = min })
+	end
+	if open < 1 then
+		issue(id .. ": needs at least 1 always-available choice")
+	end
+	Scenarios.GroupById[id] = scenario
+	table.insert(Scenarios.Group, scenario)
+end
+
+-- ===== City events (server-wide) =====
+Scenarios.City = {}
+Scenarios.CityById = {}
+for _, event in ipairs(require(script.Parent:WaitForChild("CityEvents"))) do
+	local id = event.Id
+	if type(id) ~= "string" or Scenarios.CityById[id] then
+		issue("invalid or duplicate city event Id " .. tostring(id))
+		continue
+	end
+	if type(event.JoinText) ~= "string" or type(event.SkipText) ~= "string" then
+		issue(id .. ": needs JoinText and SkipText")
+	end
+	validateRequires(id, event.Requires)
+	validateEffects(id, event.Effects, { MinMoney = event.Requires and event.Requires.MinMoney or 0 })
+	Scenarios.CityById[id] = event
+	table.insert(Scenarios.City, event)
+end
+
 function Scenarios.CountForStage(stage: number): number
 	local n = 0
 	for _, scenario in ipairs(Scenarios.All) do
@@ -2486,7 +2888,7 @@ end
 return Scenarios
 ]]></string>
           </Properties>
-          <Item class="ModuleScript" referent="29">
+          <Item class="ModuleScript" referent="31">
             <Properties>
               <string name="Name">Adult</string>
               <string name="Source"><![CDATA[--[[
@@ -2781,7 +3183,7 @@ return {
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="30">
+          <Item class="ModuleScript" referent="32">
             <Properties>
               <string name="Name">Childhood</string>
               <string name="Source"><![CDATA[--[[
@@ -3418,7 +3820,7 @@ return {
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="31">
+          <Item class="ModuleScript" referent="33">
             <Properties>
               <string name="Name">LifeAndWork</string>
               <string name="Source"><![CDATA[--[[
@@ -3849,7 +4251,7 @@ return {
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="32">
+          <Item class="ModuleScript" referent="34">
             <Properties>
               <string name="Name">MiddleAge</string>
               <string name="Source"><![CDATA[--[[
@@ -4091,7 +4493,7 @@ return {
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="33">
+          <Item class="ModuleScript" referent="35">
             <Properties>
               <string name="Name">Retirement</string>
               <string name="Source"><![CDATA[--[[
@@ -4254,7 +4656,7 @@ return {
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="34">
+          <Item class="ModuleScript" referent="36">
             <Properties>
               <string name="Name">Teen</string>
               <string name="Source"><![CDATA[--[[
@@ -4509,7 +4911,7 @@ return {
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="35">
+          <Item class="ModuleScript" referent="37">
             <Properties>
               <string name="Name">YoungAdult</string>
               <string name="Source"><![CDATA[--[[
@@ -4788,7 +5190,7 @@ return {
             </Properties>
           </Item>
         </Item>
-        <Item class="ModuleScript" referent="36">
+        <Item class="ModuleScript" referent="38">
           <Properties>
             <string name="Name">Twists</string>
             <string name="Source"><![CDATA[--[[
@@ -4848,11 +5250,11 @@ return {
           </Properties>
         </Item>
       </Item>
-      <Item class="Folder" referent="37">
+      <Item class="Folder" referent="39">
         <Properties>
           <string name="Name">Lib</string>
         </Properties>
-        <Item class="ModuleScript" referent="38">
+        <Item class="ModuleScript" referent="40">
           <Properties>
             <string name="Name">Actions</string>
             <string name="Source"><![CDATA[--[[
@@ -5069,7 +5471,7 @@ return Actions
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="39">
+        <Item class="ModuleScript" referent="41">
           <Properties>
             <string name="Name">Conditions</string>
             <string name="Source"><![CDATA[--[[
@@ -5313,7 +5715,7 @@ return Conditions
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="40">
+        <Item class="ModuleScript" referent="42">
           <Properties>
             <string name="Name">Consequences</string>
             <string name="Source"><![CDATA[--[[
@@ -5738,20 +6140,38 @@ end
 	Applies effects (and possibly one chance Outcome) to `life`.
 	Returns summary = { Applied, MoneyDelta, FlagsAdded, TraitsGained, LifeChanges, Story, OutcomeTriggered }
 ]]
-function Consequences.Apply(life, effects, rng, logStory: boolean?)
+-- Rolls which chance Outcome (if any) happens: returns its index, or 0 for none.
+function Consequences.RollOutcome(effects, rng): number
+	if not effects.Outcomes then
+		return 0
+	end
+	local roll = rng:NextNumber()
+	local cumulative = 0
+	for index, outcome in ipairs(effects.Outcomes) do
+		cumulative += outcome.Chance
+		if roll < cumulative then
+			return index
+		end
+	end
+	return 0
+end
+
+--[[
+	`forcedOutcome` (optional) decides the chance Outcome instead of rolling:
+	group decisions roll once and pass the same index to every member, so
+	friends who start a business together share the same fate, while each
+	life still applies the effects to its own stats and money.
+]]
+function Consequences.Apply(life, effects, rng, logStory: boolean?, forcedOutcome: number?)
 	local summary = Consequences.NewSummary(rng)
 	applyBlock(life, effects, summary)
 
 	if effects.Outcomes then
-		local roll = rng:NextNumber()
-		local cumulative = 0
-		for _, outcome in ipairs(effects.Outcomes) do
-			cumulative += outcome.Chance
-			if roll < cumulative then
-				applyBlock(life, outcome, summary)
-				summary.OutcomeTriggered = true
-				break
-			end
+		local index = if forcedOutcome ~= nil then forcedOutcome else Consequences.RollOutcome(effects, rng)
+		local outcome = effects.Outcomes[index]
+		if outcome then
+			applyBlock(life, outcome, summary)
+			summary.OutcomeTriggered = true
 		end
 	end
 
@@ -5853,7 +6273,7 @@ return Consequences
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="41">
+        <Item class="ModuleScript" referent="43">
           <Properties>
             <string name="Name">MockDataStore</string>
             <string name="Source"><![CDATA[--[[
@@ -5908,7 +6328,7 @@ return MockDataStore
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="42">
+        <Item class="ModuleScript" referent="44">
           <Properties>
             <string name="Name">RandomEvents</string>
             <string name="Source"><![CDATA[--[[
@@ -5980,7 +6400,7 @@ return RandomEvents
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="43">
+        <Item class="ModuleScript" referent="45">
           <Properties>
             <string name="Name">Reveal</string>
             <string name="Source"><![CDATA[--[[
@@ -6014,6 +6434,7 @@ local StatDefinitions = require(Shared.Data.StatDefinitions)
 local LifeStages = require(Shared.Data.LifeStages)
 local Careers = require(Shared.Data.Careers)
 local Traits = require(Shared.Data.Traits)
+local Assets = require(Shared.Data.Assets)
 local Config = require(Shared.Config)
 
 local Conditions = require(script.Parent.Conditions)
@@ -6243,6 +6664,15 @@ function Reveal.Final(life, nextId: number)
 		end
 	end
 
+	-- Moments shared with friends (group events in a Life Circle).
+	for i = #(life.Shared or {}), 1, -1 do
+		local shared = life.Shared[i]
+		if #moments >= 7 then
+			break
+		end
+		table.insert(moments, ("%s With %s: %s"):format(shared.Icon or "🤝", table.concat(shared.With or {}, " & "), shared.Title))
+	end
+
 	-- Achievements.
 	local achievements = {}
 	if outcomes.Millionaire then
@@ -6345,6 +6775,16 @@ function Reveal.Card(life, includeStats: boolean)
 		end
 		card.NetWorth = math.floor(Budget.NetWorth(life))
 		card.Overall = round(StatMath.Overall(life.Stats))
+		-- Show off your lifestyle: homes, cars and more.
+		local owned = {}
+		for id in pairs(life.Assets) do
+			local asset = Assets.Info[id]
+			if asset then
+				table.insert(owned, asset.Icon .. " " .. asset.Title)
+			end
+		end
+		table.sort(owned)
+		card.Assets = owned
 	end
 	return card
 end
@@ -6353,7 +6793,7 @@ return Reveal
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="44">
+        <Item class="ModuleScript" referent="46">
           <Properties>
             <string name="Name">ScenarioPicker</string>
             <string name="Source"><![CDATA[--[[
@@ -6466,7 +6906,7 @@ return ScenarioPicker
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="45">
+        <Item class="ModuleScript" referent="47">
           <Properties>
             <string name="Name">SessionLock</string>
             <string name="Source"><![CDATA[--[[
@@ -6522,7 +6962,7 @@ return SessionLock
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="46">
+        <Item class="ModuleScript" referent="48">
           <Properties>
             <string name="Name">Validate</string>
             <string name="Source"><![CDATA[--[[
@@ -6614,7 +7054,7 @@ return Validate
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="47">
+        <Item class="ModuleScript" referent="49">
           <Properties>
             <string name="Name">Yearly</string>
             <string name="Source"><![CDATA[--[[
@@ -6801,7 +7241,7 @@ return Yearly
           </Properties>
         </Item>
       </Item>
-      <Item class="Script" referent="48">
+      <Item class="Script" referent="50">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -6862,11 +7302,208 @@ print(("[Server] CHOOSE YOUR LIFE started with %d services"):format(#services))
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="49">
+      <Item class="Folder" referent="51">
         <Properties>
           <string name="Name">Services</string>
         </Properties>
-        <Item class="ModuleScript" referent="50">
+        <Item class="ModuleScript" referent="52">
+          <Properties>
+            <string name="Name">CityEventService</string>
+            <string name="Source"><![CDATA[--[[
+	CityEventService  (ServerScriptService.Server.Services.CityEventService)
+	Shared, server-wide events (Content/CityEvents): every few minutes the
+	whole server gets the same invitation, such as a festival, the marathon
+	or a free concert. Each player chooses to join or skip within the time
+	limit. Joining applies the effects to that player's own life; chance
+	outcomes are rolled once for the whole city, so everyone who joins
+	shares the same result. A summary ("12 people joined!") follows.
+
+	CityEventRespond(eventId, join) -> true, result | false, reason
+	CityEventService.Trigger(eventId?) starts one now (tests / admin tools).
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Net = require(Shared.Net)
+local Config = require(Shared.Config)
+
+local Server = script.Parent.Parent
+local Conditions = require(Server.Lib.Conditions)
+local Consequences = require(Server.Lib.Consequences)
+local Scenarios = require(Server.Content.Scenarios)
+
+local DataService = require(script.Parent.DataService)
+
+local CityEventService = {}
+CityEventService.Priority = 37
+
+local current = nil
+local lastId = nil
+local counter = 0
+local rng = Random.new()
+
+local function activeLife(player: Player)
+	local life = DataService.GetActiveLife(player)
+	if life and not life.Completed then
+		return life
+	end
+	return nil
+end
+
+local function interval(): number
+	return if RunService:IsStudio() then 90 else Config.CityEventInterval
+end
+
+local function minPlayers(): number
+	return if RunService:IsStudio() then 1 else Config.CityEventMinPlayers
+end
+
+local function finish(event)
+	if current ~= event then
+		return
+	end
+	current = nil
+	local joined, invited = 0, 0
+	for _, response in pairs(event.Responses) do
+		if response == "Join" then
+			joined += 1
+		end
+	end
+	for _ in pairs(event.Invited) do
+		invited += 1
+	end
+	Net.FireAll("CityEventSummary", { EventId = event.Id, Icon = event.Def.Icon, Title = event.Def.Title, Joined = joined, Invited = invited })
+end
+
+function CityEventService.Current()
+	return current
+end
+
+function CityEventService.Trigger(eventId: string?)
+	if current then
+		return false, "EventActive"
+	end
+	local pool = {}
+	for _, def in ipairs(Scenarios.City) do
+		if (not eventId or def.Id == eventId) and def.Id ~= lastId then
+			table.insert(pool, def)
+		end
+	end
+	if eventId and #pool == 0 then
+		pool = { Scenarios.CityById[eventId] }
+	end
+	local def = pool[rng:NextInteger(1, #pool)]
+	if not def then
+		return false, "NoEvent"
+	end
+	counter += 1
+	lastId = def.Id
+	local event = {
+		Id = counter,
+		Def = def,
+		OutcomeIndex = Consequences.RollOutcome(def.Effects, rng), -- the same for the whole city
+		Responses = {},
+		Invited = {},
+		Deadline = os.clock() + Config.CityEventJoinSeconds,
+	}
+	current = event
+	for _, player in ipairs(Players:GetPlayers()) do
+		local life = activeLife(player)
+		if life then
+			local eligible = Conditions.Check(life, def.Requires)
+			event.Invited[player] = eligible
+			Net.Fire("CityEvent", player, {
+				EventId = event.Id,
+				Icon = def.Icon,
+				Title = def.Title,
+				Description = def.Description,
+				JoinText = def.JoinText,
+				SkipText = def.SkipText,
+				Seconds = Config.CityEventJoinSeconds,
+				Eligible = eligible,
+			})
+		end
+	end
+	task.delay(Config.CityEventJoinSeconds, function()
+		finish(event)
+	end)
+	return true, { EventId = event.Id, Id = def.Id }
+end
+
+function CityEventService.Respond(player: Player, eventId: any, join: any)
+	local event = current
+	if not event or event.Id ~= eventId then
+		return false, "NoEvent"
+	end
+	if event.Invited[player] == nil then
+		return false, "NotInvited"
+	end
+	if event.Responses[player] then
+		return false, "AlreadyResponded"
+	end
+	if join ~= true then
+		event.Responses[player] = "Skip"
+		return true, { Joined = false }
+	end
+	if not event.Invited[player] then
+		return false, "NotEligible"
+	end
+	local result
+	DataService.Update(player, function(d)
+		local life = d.Slots[d.ActiveSlot]
+		if type(life) ~= "table" or life.Completed then
+			return
+		end
+		local lifeRng = Random.new((life.Seed + #life.Decisions * 17 + event.Id * 13) % 2147483646 + 1)
+		local summary = Consequences.Apply(life, event.Def.Effects, lifeRng, true, event.OutcomeIndex)
+		summary.Applied.Wealth = nil
+		result = {
+			Joined = true,
+			Icon = event.Def.Icon,
+			Title = event.Def.Title,
+			Story = summary.Story,
+			Applied = summary.Applied,
+			MoneyDelta = summary.MoneyDelta,
+			LifeChanges = summary.LifeChanges,
+			TraitsGained = summary.TraitsGained,
+			Lucky = event.OutcomeIndex > 0,
+		}
+	end)
+	if not result then
+		return false, "NoLife"
+	end
+	event.Responses[player] = "Join"
+	return true, result
+end
+
+function CityEventService.Init() end
+
+function CityEventService.Start()
+	Net.Handle("CityEventRespond", CityEventService.Respond)
+	task.spawn(function()
+		while true do
+			task.wait(interval())
+			local active = 0
+			for _, player in ipairs(Players:GetPlayers()) do
+				if activeLife(player) then
+					active += 1
+				end
+			end
+			if active >= minPlayers() and not current then
+				CityEventService.Trigger()
+			end
+		end
+	end)
+end
+
+return CityEventService
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="53">
           <Properties>
             <string name="Name">DataService</string>
             <string name="Source"><![CDATA[--[[
@@ -7263,7 +7900,7 @@ return DataService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="51">
+        <Item class="ModuleScript" referent="54">
           <Properties>
             <string name="Name">LifeService</string>
             <string name="Source"><![CDATA[--[[
@@ -7767,7 +8404,706 @@ return LifeService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="52">
+        <Item class="ModuleScript" referent="55">
+          <Properties>
+            <string name="Name">PartyService</string>
+            <string name="Source"><![CDATA[--[[
+	PartyService  (ServerScriptService.Server.Services.PartyService)
+	"Life Circles": play with friends while every life stays independent.
+
+	Circles (parties) of up to 4 players in the same server:
+	  PartyInvite(targetUserId) · PartyRespond(inviteId, accept) · PartyLeave() · PartyKick(userId)
+	  Invites expire; the leader role passes on if the leader leaves; a circle
+	  of one dissolves.
+
+	Group events (PartyStartEvent → PartyVote):
+	  The server picks a group scenario every member qualifies for
+	  (Content/GroupScenarios), everyone votes, and the majority wins (ties and
+	  no-shows are settled fairly at random). Chance outcomes are rolled ONCE
+	  for the group (shared fate), but the effects are applied to each
+	  member's OWN life with their own stats, traits and money. Nothing a
+	  friend does ever writes to your life except through a vote you were
+	  part of. Group events don't use a decision or change anyone's age.
+	  Each member's life also gains the others as named friends and records
+	  the shared moment (it appears in the Final Reveal).
+
+	Group Life Reveal (PartyStartReveal): everyone watches each member's
+	predicted futures, then a "most likely to…" board. Privacy settings
+	still apply; circle members count as friends.
+
+	JoinFriendServer(placeId, jobId): teleport to a friend's server of this
+	experience (the client finds friends with Player:GetFriendsOnline).
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService = game:GetService("TeleportService")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Net = require(Shared.Net)
+local Signal = require(Shared.Util.Signal)
+local People = require(Shared.Util.People)
+local Futures = require(Shared.Util.Futures)
+local TableUtil = require(Shared.Util.TableUtil)
+local LifeStages = require(Shared.Data.LifeStages)
+local Careers = require(Shared.Data.Careers)
+
+local Server = script.Parent.Parent
+local Conditions = require(Server.Lib.Conditions)
+local Consequences = require(Server.Lib.Consequences)
+local Scenarios = require(Server.Content.Scenarios)
+
+local DataService = require(script.Parent.DataService)
+local RevealService = require(script.Parent.RevealService)
+
+local PartyService = {}
+PartyService.Priority = 36
+
+PartyService.MaxMembers = 4
+PartyService.InviteSeconds = 45
+PartyService.VoteSeconds = 40
+PartyService.EventCooldown = 90
+PartyService.RevealCooldown = 45
+PartyService.MaxSharedMoments = 10
+
+PartyService.EventResolved = Signal.new() -- (party, scenario, choiceId, outcomeIndex)
+
+local parties = {}
+local partyOf: { [Player]: any } = {}
+local invites = {}
+local counters = { Party = 0, Invite = 0, Event = 0, Reveal = 0 }
+local rng = Random.new()
+
+-- ===== Helpers =====
+local function now(): number
+	return os.clock()
+end
+
+local function findPlayer(userId: any): Player?
+	if type(userId) ~= "number" or userId ~= userId or userId % 1 ~= 0 then
+		return nil
+	end
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.UserId == userId then
+			return p
+		end
+	end
+	return nil
+end
+
+local function displayName(player: Player): string
+	return player.DisplayName or player.Name
+end
+
+local function activeLife(player: Player)
+	local life = DataService.GetActiveLife(player)
+	if life and not life.Completed then
+		return life
+	end
+	return nil
+end
+
+function PartyService.PartyOf(player: Player)
+	return partyOf[player]
+end
+
+function PartyService.SameParty(a: Player, b: Player): boolean
+	return partyOf[a] ~= nil and partyOf[a] == partyOf[b]
+end
+
+local function memberInfo(party, player: Player)
+	local info = { UserId = player.UserId, DisplayName = displayName(player), IsLeader = party.Leader == player }
+	local life = DataService.GetActiveLife(player)
+	if life then
+		info.LifeName = life.Name
+		info.Age = life.Age
+		info.StageName = LifeStages.Get(life.Stage).DisplayName
+		info.Completed = life.Completed
+		info.Career = if life.Career.Id ~= "None" and Careers.Info[life.Career.Id] then Careers.TitleAt(life.Career.Id, life.Career.Level) elseif life.Flags.Retired then "Retired" else nil
+	end
+	return info
+end
+
+function PartyService.State(party)
+	local members = {}
+	for _, member in ipairs(party.Members) do
+		table.insert(members, memberInfo(party, member))
+	end
+	return {
+		Id = party.Id,
+		LeaderUserId = party.Leader.UserId,
+		Members = members,
+		MaxMembers = PartyService.MaxMembers,
+		EventActive = party.Event ~= nil,
+		EventCooldown = math.max(0, math.ceil(PartyService.EventCooldown - (now() - party.LastEventAt))),
+		RevealCooldown = math.max(0, math.ceil(PartyService.RevealCooldown - (now() - party.LastRevealAt))),
+	}
+end
+
+local function broadcast(party)
+	local state = PartyService.State(party)
+	for _, member in ipairs(party.Members) do
+		Net.Fire("PartyUpdate", member, state)
+	end
+end
+
+local function notify(player: Player, text: string, kind: string?)
+	Net.Fire("Notify", player, { Title = "🤝 Life Circle", Text = text, Kind = kind or "Info" })
+end
+
+-- ===== Circle membership =====
+local resolveEvent
+
+local function removeFromParty(player: Player, reason: string?)
+	local party = partyOf[player]
+	if not party then
+		return
+	end
+	partyOf[player] = nil
+	local index = table.find(party.Members, player)
+	if index then
+		table.remove(party.Members, index)
+	end
+	if player.Parent then
+		Net.Fire("PartyUpdate", player, false)
+	end
+	if #party.Members <= 1 then
+		-- A circle of one dissolves.
+		for _, last in ipairs(party.Members) do
+			partyOf[last] = nil
+			Net.Fire("PartyUpdate", last, false)
+			notify(last, "Your Life Circle has ended.")
+		end
+		party.Members = {}
+		party.Event = nil
+		parties[party.Id] = nil
+		return
+	end
+	if party.Leader == player then
+		party.Leader = party.Members[1]
+	end
+	for _, member in ipairs(party.Members) do
+		notify(member, displayName(player) .. (if reason == "Kicked" then " was removed from the circle." else " left the circle."))
+	end
+	-- A leaving voter no longer counts; finish the vote if everyone left has voted.
+	local event = party.Event
+	if event then
+		event.Votes[player] = nil
+		local stillVoting = false
+		for _, voter in ipairs(event.Voters) do
+			if partyOf[voter] == party and event.Votes[voter] == nil then
+				stillVoting = true
+			end
+		end
+		if not stillVoting then
+			resolveEvent(party)
+		end
+	end
+	broadcast(party)
+end
+
+function PartyService.Invite(player: Player, targetUserId: any)
+	local target = findPlayer(targetUserId)
+	if not target then
+		return false, "NotHere"
+	end
+	if target == player then
+		return false, "Self"
+	end
+	if not DataService.IsLoaded(player) or not DataService.IsLoaded(target) then
+		return false, "NotLoaded"
+	end
+	local party = partyOf[player]
+	if party and table.find(party.Members, target) then
+		return false, "AlreadyMember"
+	end
+	if party and #party.Members >= PartyService.MaxMembers then
+		return false, "PartyFull"
+	end
+	for _, invite in pairs(invites) do
+		if invite.From == player and invite.To == target and invite.Expires > now() then
+			return false, "AlreadyInvited"
+		end
+	end
+	counters.Invite += 1
+	local id = "inv" .. counters.Invite
+	invites[id] = { Id = id, From = player, To = target, Expires = now() + PartyService.InviteSeconds }
+	Net.Fire("PartyInviteReceived", target, { InviteId = id, FromUserId = player.UserId, FromName = displayName(player), Seconds = PartyService.InviteSeconds })
+	return true, { InviteId = id }
+end
+
+function PartyService.Respond(player: Player, inviteId: any, accept: any)
+	if type(inviteId) ~= "string" then
+		return false, "BadArgs"
+	end
+	local invite = invites[inviteId]
+	if not invite or invite.To ~= player then
+		return false, "NoInvite"
+	end
+	invites[inviteId] = nil
+	if invite.Expires < now() then
+		return false, "Expired"
+	end
+	local from = invite.From
+	if not from.Parent then
+		return false, "NotHere"
+	end
+	if accept ~= true then
+		notify(from, displayName(player) .. " declined your invite.")
+		return true, { Joined = false }
+	end
+	local party = partyOf[from]
+	if party and #party.Members >= PartyService.MaxMembers then
+		return false, "PartyFull"
+	end
+	if partyOf[player] and partyOf[player] ~= party then
+		removeFromParty(player)
+	end
+	if not party then
+		counters.Party += 1
+		party = { Id = "circle" .. counters.Party, Leader = from, Members = { from }, LastEventAt = -math.huge, LastRevealAt = -math.huge, Recent = {} }
+		parties[party.Id] = party
+		partyOf[from] = party
+	end
+	if not table.find(party.Members, player) then
+		table.insert(party.Members, player)
+	end
+	partyOf[player] = party
+	for _, member in ipairs(party.Members) do
+		if member ~= player then
+			notify(member, displayName(player) .. " joined your Life Circle!", "Success")
+		end
+	end
+	broadcast(party)
+	return true, { Joined = true, PartyId = party.Id }
+end
+
+function PartyService.Leave(player: Player)
+	if not partyOf[player] then
+		return false, "NoParty"
+	end
+	removeFromParty(player)
+	return true
+end
+
+function PartyService.Kick(player: Player, userId: any)
+	local party = partyOf[player]
+	if not party then
+		return false, "NoParty"
+	end
+	if party.Leader ~= player then
+		return false, "NotLeader"
+	end
+	local target = findPlayer(userId)
+	if not target or target == player or partyOf[target] ~= party then
+		return false, "NotMember"
+	end
+	removeFromParty(target, "Kicked")
+	if target.Parent then
+		notify(target, "You were removed from the Life Circle.", "Warning")
+	end
+	return true
+end
+
+-- ===== Group events =====
+local function lockedFor(lives, requires): boolean
+	for _, life in ipairs(lives) do
+		if not Conditions.Check(life, requires) then
+			return true
+		end
+	end
+	return false
+end
+
+function PartyService.EligibleScenarios(lives)
+	local list = {}
+	for _, scenario in ipairs(Scenarios.Group) do
+		if not lockedFor(lives, scenario.Requires) then
+			local open = 0
+			for _, choice in ipairs(scenario.Choices) do
+				if not lockedFor(lives, choice.Requires) then
+					open += 1
+				end
+			end
+			if open >= 2 then
+				table.insert(list, scenario)
+			end
+		end
+	end
+	return list
+end
+
+function PartyService.StartEvent(player: Player, forcedScenarioId: string?)
+	local party = partyOf[player]
+	if not party then
+		return false, "NoParty"
+	end
+	if party.Event then
+		return false, "EventActive"
+	end
+	local wait = PartyService.EventCooldown - (now() - party.LastEventAt)
+	if wait > 0 then
+		return false, "Cooldown", math.ceil(wait)
+	end
+	local lives = {}
+	for _, member in ipairs(party.Members) do
+		local life = activeLife(member)
+		if not life then
+			return false, "NotEveryoneReady", displayName(member)
+		end
+		table.insert(lives, life)
+	end
+	local eligible = PartyService.EligibleScenarios(lives)
+	local scenario
+	if forcedScenarioId then
+		scenario = Scenarios.GroupById[forcedScenarioId]
+		if not scenario or not table.find(eligible, scenario) then
+			return false, "NotEligible"
+		end
+	else
+		local total, weights = 0, {}
+		for i, s in ipairs(eligible) do
+			weights[i] = (s.Weight or 1) * (if table.find(party.Recent, s.Id) then 0.15 else 1)
+			total += weights[i]
+		end
+		local roll = rng:NextNumber() * total
+		for i, s in ipairs(eligible) do
+			roll -= weights[i]
+			if roll <= 0 then
+				scenario = s
+				break
+			end
+		end
+		scenario = scenario or eligible[#eligible]
+	end
+	if not scenario then
+		return false, "NoEvent"
+	end
+	counters.Event += 1
+	local event = {
+		Id = counters.Event,
+		Scenario = scenario,
+		Voters = table.clone(party.Members),
+		Votes = {},
+		Locked = {},
+		StartedBy = player,
+	}
+	local choices = {}
+	for index, choice in ipairs(scenario.Choices) do
+		local locked = lockedFor(lives, choice.Requires)
+		event.Locked[choice.Id] = locked
+		local preview, moneyDir, risky, tags = Consequences.Preview(choice.Effects)
+		table.insert(choices, {
+			Id = choice.Id,
+			Index = index,
+			Text = choice.Text,
+			Description = choice.Description,
+			Locked = locked,
+			LockHint = if locked then (choice.LockHint or "Not everyone can do this") else nil,
+			Preview = preview,
+			MoneyDir = moneyDir,
+			Risky = risky,
+			Tags = tags,
+		})
+	end
+	local names = {}
+	for _, member in ipairs(party.Members) do
+		table.insert(names, displayName(member))
+	end
+	party.Event = event
+	local payload = {
+		EventId = event.Id,
+		Icon = scenario.Icon,
+		Title = scenario.Title,
+		Description = scenario.Description,
+		Choices = choices,
+		Seconds = PartyService.VoteSeconds,
+		Members = names,
+		StartedBy = displayName(player),
+	}
+	for _, member in ipairs(party.Members) do
+		Net.Fire("GroupEvent", member, payload)
+	end
+	broadcast(party)
+	task.delay(PartyService.VoteSeconds, function()
+		if party.Event == event then
+			resolveEvent(party)
+		end
+	end)
+	return true, { EventId = event.Id, ScenarioId = scenario.Id }
+end
+
+function PartyService.Vote(player: Player, eventId: any, choiceId: any)
+	local party = partyOf[player]
+	local event = party and party.Event
+	if not event or event.Id ~= eventId then
+		return false, "NoEvent"
+	end
+	if not table.find(event.Voters, player) then
+		return false, "NotInEvent"
+	end
+	if type(choiceId) ~= "string" or not event.Scenario.ChoiceById[choiceId] then
+		return false, "BadChoice"
+	end
+	if event.Locked[choiceId] then
+		return false, "ChoiceLocked"
+	end
+	event.Votes[player] = choiceId
+	local votes = {}
+	for voter, choice in pairs(event.Votes) do
+		votes[tostring(voter.UserId)] = choice
+	end
+	for _, member in ipairs(party.Members) do
+		Net.Fire("GroupVote", member, { EventId = event.Id, Votes = votes })
+	end
+	local everyone = true
+	for _, voter in ipairs(event.Voters) do
+		if partyOf[voter] == party and event.Votes[voter] == nil then
+			everyone = false
+		end
+	end
+	if everyone then
+		task.defer(function()
+			if party.Event == event then
+				resolveEvent(party)
+			end
+		end)
+	end
+	return true
+end
+
+function resolveEvent(party)
+	local event = party.Event
+	if not event then
+		return
+	end
+	party.Event = nil
+	party.LastEventAt = now()
+	table.insert(party.Recent, event.Scenario.Id)
+	if #party.Recent > 4 then
+		table.remove(party.Recent, 1)
+	end
+	local scenario = event.Scenario
+
+	-- Count votes from voters still in the circle.
+	local tally, best, top = {}, 0, {}
+	local voteMap = {}
+	for voter, choiceId in pairs(event.Votes) do
+		if partyOf[voter] == party then
+			tally[choiceId] = (tally[choiceId] or 0) + 1
+			voteMap[tostring(voter.UserId)] = choiceId
+		end
+	end
+	for choiceId, count in pairs(tally) do
+		if count > best then
+			best, top = count, { choiceId }
+		elseif count == best then
+			table.insert(top, choiceId)
+		end
+	end
+	local noVotes = #top == 0
+	if noVotes then
+		for _, choice in ipairs(scenario.Choices) do
+			if not event.Locked[choice.Id] then
+				table.insert(top, choice.Id)
+			end
+		end
+	end
+	table.sort(top)
+	local choiceId = top[rng:NextInteger(1, #top)]
+	local choice = scenario.ChoiceById[choiceId]
+	local outcomeIndex = Consequences.RollOutcome(choice.Effects, rng) -- shared fate
+
+	local members = table.clone(party.Members)
+	local lifeNames = {}
+	for _, member in ipairs(members) do
+		local life = DataService.GetActiveLife(member)
+		lifeNames[member] = if life then life.Name else displayName(member)
+	end
+	for _, member in ipairs(members) do
+		local result
+		DataService.Update(member, function(d)
+			local life = d.Slots[d.ActiveSlot]
+			if type(life) ~= "table" or life.Completed then
+				return
+			end
+			local memberRng = Random.new((life.Seed + #life.Decisions * 31 + event.Id * 7) % 2147483646 + 1)
+			local summary = Consequences.Apply(life, choice.Effects, memberRng, true, outcomeIndex)
+			-- Friends in real life become friends in each other's lives.
+			local others = {}
+			for _, other in ipairs(members) do
+				if other ~= member then
+					table.insert(others, lifeNames[other])
+					local existing = nil
+					for _, person in ipairs(life.People) do
+						if person.PlayerUserId == other.UserId then
+							existing = person
+						end
+					end
+					if existing then
+						Consequences.ChangeBond(existing, 5, summary)
+					else
+						local added = People.AddNamed(life, "Friend", lifeNames[other], other.UserId, 70)
+						if added then
+							table.insert(summary.LifeChanges, ("🤝 %s (%s) is now in your People"):format(added.Name, displayName(other)))
+						end
+					end
+				end
+			end
+			life.Shared = life.Shared or {}
+			table.insert(life.Shared, { Title = scenario.Title, Icon = scenario.Icon, With = others, Age = life.Age })
+			TableUtil.TrimArray(life.Shared, PartyService.MaxSharedMoments)
+			Consequences.SyncWealth(life)
+			summary.Applied.Wealth = nil
+			result = {
+				EventId = event.Id,
+				Icon = scenario.Icon,
+				Title = scenario.Title,
+				ChoiceId = choiceId,
+				ChoiceText = choice.Text,
+				Tally = tally,
+				Votes = voteMap,
+				NoVotes = noVotes,
+				Tie = not noVotes and #top > 1,
+				Lucky = outcomeIndex > 0,
+				Story = summary.Story,
+				Applied = summary.Applied,
+				MoneyDelta = summary.MoneyDelta,
+				LifeChanges = summary.LifeChanges,
+				TraitsGained = summary.TraitsGained,
+				BondChanges = summary.BondChanges,
+			}
+		end)
+		if result and member.Parent then
+			Net.Fire("GroupEventResult", member, result)
+		end
+	end
+	PartyService.EventResolved:Fire(party, scenario, choiceId, outcomeIndex)
+	if parties[party.Id] then
+		broadcast(party)
+	end
+end
+
+-- ===== Group Life Reveal =====
+local function superlatives(cards)
+	local list = {}
+	for _, id in ipairs(Futures.Order) do
+		local info = Futures.Info[id]
+		if info.Positive then
+			local best = nil
+			for _, c in ipairs(cards) do
+				if c.Card and (not best or c.Card.Predictions[id] > best.Card.Predictions[id]) then
+					best = c
+				end
+			end
+			if best and best.Card.Predictions[id] >= 15 then
+				table.insert(list, { Id = id, UserId = best.UserId, DisplayName = best.DisplayName, LifeName = best.Card.LifeName, Pct = best.Card.Predictions[id] })
+			end
+		end
+	end
+	table.sort(list, function(a, b)
+		return a.Pct > b.Pct
+	end)
+	return list
+end
+
+function PartyService.StartReveal(player: Player)
+	local party = partyOf[player]
+	if not party then
+		return false, "NoParty"
+	end
+	local wait = PartyService.RevealCooldown - (now() - party.LastRevealAt)
+	if wait > 0 then
+		return false, "Cooldown", math.ceil(wait)
+	end
+	party.LastRevealAt = now()
+	counters.Reveal += 1
+	for _, viewer in ipairs(party.Members) do
+		local cards = {}
+		for _, target in ipairs(party.Members) do
+			local card = RevealService.CardFor(viewer, target)
+			if card then
+				table.insert(cards, card)
+			end
+		end
+		Net.Fire("GroupReveal", viewer, {
+			SessionId = counters.Reveal,
+			StartedBy = displayName(player),
+			Cards = cards,
+			Superlatives = superlatives(cards),
+		})
+	end
+	broadcast(party)
+	return true
+end
+
+-- ===== Joining friends in other servers =====
+local function looksLikeJobId(value: any): boolean
+	return type(value) == "string" and #value <= 64 and value:match("^[%w%-]+$") ~= nil
+end
+
+function PartyService.JoinFriendServer(player: Player, placeId: any, jobId: any)
+	if placeId ~= game.PlaceId or not looksLikeJobId(jobId) then
+		return false, "BadServer"
+	end
+	if jobId == game.JobId then
+		return false, "SameServer"
+	end
+	local ok, err = pcall(function()
+		TeleportService:TeleportToPlaceInstance(placeId, jobId, player)
+	end)
+	if not ok then
+		return false, "TeleportFailed: " .. tostring(err)
+	end
+	return true
+end
+
+-- ===== Lifecycle =====
+function PartyService.Init()
+	RevealService.ExtraFriendCheck = PartyService.SameParty
+end
+
+function PartyService.Start()
+	Net.Handle("PartyInvite", PartyService.Invite)
+	Net.Handle("PartyRespond", PartyService.Respond)
+	Net.Handle("PartyLeave", PartyService.Leave)
+	Net.Handle("PartyKick", PartyService.Kick)
+	Net.Handle("PartyStartEvent", function(player)
+		return PartyService.StartEvent(player)
+	end)
+	Net.Handle("PartyVote", PartyService.Vote)
+	Net.Handle("PartyStartReveal", PartyService.StartReveal)
+	Net.Handle("JoinFriendServer", PartyService.JoinFriendServer)
+	Net.Handle("GetPartyState", function(player)
+		local party = partyOf[player]
+		return true, if party then PartyService.State(party) else false
+	end)
+	Players.PlayerRemoving:Connect(function(player)
+		removeFromParty(player)
+		for id, invite in pairs(invites) do
+			if invite.From == player or invite.To == player then
+				invites[id] = nil
+			end
+		end
+	end)
+	-- Tidy expired invites.
+	task.spawn(function()
+		while true do
+			task.wait(30)
+			for id, invite in pairs(invites) do
+				if invite.Expires < now() then
+					invites[id] = nil
+				end
+			end
+		end
+	end)
+end
+
+return PartyService
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">RevealService</string>
             <string name="Source"><![CDATA[--[[
@@ -7799,6 +9135,9 @@ RevealService.FriendCacheSeconds = 300
 
 local friendCache: { [string]: { Value: boolean, Time: number } } = {}
 
+-- Set by PartyService: members of the same Life Circle count as friends.
+RevealService.ExtraFriendCheck = nil :: ((Player, Player) -> boolean)?
+
 function RevealService.AreFriends(a: Player, b: Player): boolean
 	if a == b then
 		return true
@@ -7822,7 +9161,8 @@ function RevealService.CardFor(viewer: Player, target: Player)
 	if not data then
 		return nil
 	end
-	local relation = if viewer == target then "Self" elseif RevealService.AreFriends(viewer, target) then "Friend" else "Stranger"
+	local partyFriend = RevealService.ExtraFriendCheck ~= nil and RevealService.ExtraFriendCheck(viewer, target)
+	local relation = if viewer == target then "Self" elseif partyFriend or RevealService.AreFriends(viewer, target) then "Friend" else "Stranger"
 	local entry = {
 		UserId = target.UserId,
 		DisplayName = target.DisplayName or target.Name,
@@ -7892,7 +9232,7 @@ return RevealService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="53">
+        <Item class="ModuleScript" referent="57">
           <Properties>
             <string name="Name">SettingsService</string>
             <string name="Source"><![CDATA[--[[
@@ -7980,7 +9320,7 @@ return SettingsService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="54">
+        <Item class="ModuleScript" referent="58">
           <Properties>
             <string name="Name">StatService</string>
             <string name="Source"><![CDATA[--[[
@@ -8051,23 +9391,23 @@ return StatService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="55">
+  <Item class="StarterPlayer" referent="59">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="56">
+    <Item class="StarterPlayerScripts" referent="60">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="57">
+      <Item class="Folder" referent="61">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="Folder" referent="58">
+        <Item class="Folder" referent="62">
           <Properties>
             <string name="Name">Controllers</string>
           </Properties>
-          <Item class="ModuleScript" referent="59">
+          <Item class="ModuleScript" referent="63">
             <Properties>
               <string name="Name">AudioController</string>
               <string name="Source"><![CDATA[--[[
@@ -8176,7 +9516,7 @@ return AudioController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="60">
+          <Item class="ModuleScript" referent="64">
             <Properties>
               <string name="Name">ControlsController</string>
               <string name="Source"><![CDATA[--[[
@@ -8226,7 +9566,7 @@ return ControlsController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="61">
+          <Item class="ModuleScript" referent="65">
             <Properties>
               <string name="Name">DataController</string>
               <string name="Source"><![CDATA[--[[
@@ -8316,7 +9656,7 @@ return DataController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="62">
+          <Item class="ModuleScript" referent="66">
             <Properties>
               <string name="Name">DecisionController</string>
               <string name="Source"><![CDATA[--[[
@@ -9289,7 +10629,7 @@ return DecisionController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="63">
+          <Item class="ModuleScript" referent="67">
             <Properties>
               <string name="Name">FinanceController</string>
               <string name="Source"><![CDATA[--[[
@@ -9502,7 +10842,283 @@ return FinanceController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="64">
+          <Item class="ModuleScript" referent="68">
+            <Properties>
+              <string name="Name">FriendsController</string>
+              <string name="Source"><![CDATA[--[[
+	FriendsController  (StarterPlayerScripts.Client.Controllers.FriendsController)
+	The "Play With Friends" screen (main menu, and 🤝 in the game HUD):
+	  • YOUR LIFE CIRCLE: members, group decision, group reveal, leave/remove
+	  • PLAYERS IN THIS SERVER: invite them to your circle, compare futures
+	  • INVITE ROBLOX FRIENDS: the Roblox invite prompt
+	  • FRIENDS PLAYING ELSEWHERE: join their server
+	Every life stays independent; see PartyService for the rules.
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Net = require(Shared.Net)
+
+local UILib = script.Parent.Parent:WaitForChild("UILib")
+local Theme = require(UILib.Theme)
+local Create = require(UILib.Create)
+local Components = require(UILib.Components)
+local Layout = require(UILib.Layout)
+
+local UIController = require(script.Parent.UIController)
+local HUDController = require(script.Parent.HUDController)
+local NotificationController = require(script.Parent.NotificationController)
+local PartyController = require(script.Parent.PartyController)
+local FutureController = require(script.Parent.FutureController)
+
+local FriendsController = {}
+FriendsController.Priority = 50
+
+local frame: CanvasGroup
+local elsewhere = nil -- cached list of friends in other servers
+local busy = false
+
+local function heading(parent, text: string, order: number)
+	Create.Label({ Text = text, TextSize = Theme.TextSize.Tiny, FontFace = Theme.Font.Heavy, TextColor3 = Theme.Color.Primary, Size = UDim2.new(1, 0, 0, 28), TextYAlignment = Enum.TextYAlignment.Bottom, LayoutOrder = order, Parent = parent })
+end
+
+local function act(remote: string, ...)
+	if busy then
+		return false
+	end
+	busy = true
+	local results = table.pack(Net.Invoke(remote, ...))
+	busy = false
+	if not results[1] then
+		local extra = if results[3] then (" (%ss)"):format(tostring(results[3])) else ""
+		NotificationController.Notify({ Title = "🤝 Life Circle", Text = PartyController.ErrorText(results[2]) .. extra, Kind = "Warning" })
+	end
+	return results[1], results[2]
+end
+
+local function row(parent, order: number, title: string, subtitle: string, buttons)
+	local frameRow = Create("Frame", { Name = "Row" .. order, BackgroundColor3 = Theme.Color.SurfaceHigh, BackgroundTransparency = 0.15, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order, Parent = parent }, { Create.Corner(Theme.RadiusSmall), Create.Padding(10, 14) })
+	Create.List(Enum.FillDirection.Vertical, 6).Parent = frameRow
+	Create.Label({ Text = title, FontFace = Theme.Font.Heavy, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = frameRow })
+	if subtitle ~= "" then
+		Create.Label({ Text = subtitle, TextSize = Theme.TextSize.Small, TextColor3 = Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = frameRow })
+	end
+	if buttons and #buttons > 0 then
+		local bar = Create("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, Parent = frameRow })
+		local list = Create.List(Enum.FillDirection.Horizontal, 8)
+		list.Wraps = true
+		list.Parent = bar
+		for i, b in ipairs(buttons) do
+			local button = Components.Button({ Name = b.Name, Text = b.Text, Icon = b.Icon, Style = b.Style or "Secondary", Size = UDim2.fromOffset(b.Width or 170, 44), TextSize = 17, LayoutOrder = i, Parent = bar, OnClick = b.OnClick })
+			if b.Disabled then
+				Components.SetDisabled(button, true)
+			end
+		end
+	end
+	return frameRow
+end
+
+local render
+
+local function inCircle(userId: number): boolean
+	local state = PartyController.Get()
+	if not state then
+		return false
+	end
+	for _, m in ipairs(state.Members) do
+		if m.UserId == userId then
+			return true
+		end
+	end
+	return false
+end
+
+local function memberSummary(m): string
+	if not m.LifeName then
+		return "No life yet"
+	end
+	return ("%s · age %d · %s%s"):format(m.LifeName, m.Age, m.StageName, if m.Career then " · " .. m.Career else "") .. (if m.Completed then " · life complete" else "")
+end
+
+local function findFriendsElsewhere()
+	elsewhere = "loading"
+	task.spawn(function()
+		local ok, friends = pcall(function()
+			return Players.LocalPlayer:GetFriendsOnline(50)
+		end)
+		local list = {}
+		if ok and type(friends) == "table" then
+			for _, f in ipairs(friends) do
+				-- LocationType 4 = playing an experience; GameId is that server's JobId.
+				if f.LocationType == 4 and f.PlaceId == game.PlaceId and f.GameId and f.GameId ~= game.JobId then
+					table.insert(list, f)
+				end
+			end
+		end
+		elsewhere = list
+		if UIController.Current() == "Friends" then
+			render()
+		end
+	end)
+end
+
+function render()
+	Create.Clear(frame, true)
+	Layout.Header(frame, "Play With Friends", function()
+		UIController.Back()
+	end)
+	local scroll = Layout.Scroll(frame)
+	local width = math.min(760, UIController.GetVirtualSize().X - 32)
+	local column = Layout.Column(scroll, width)
+	local state = PartyController.Get()
+	local me = Players.LocalPlayer
+
+	-- Circle
+	heading(column, "🤝 YOUR LIFE CIRCLE" .. (if state then ("  (%d/%d)"):format(#state.Members, state.MaxMembers) else ""), 1)
+	if not state then
+		Create.Label({ Text = "You're not in a circle yet. Invite someone below. In a circle you make group decisions together, compare futures and watch Group Life Reveals. Every life stays your own.", TextColor3 = Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = column })
+	else
+		local leader = PartyController.IsLeader()
+		for i, m in ipairs(state.Members) do
+			local buttons = {}
+			if m.UserId ~= me.UserId then
+				table.insert(buttons, { Name = "Compare" .. m.UserId, Text = "Compare", Icon = "⚖️", Width = 150, OnClick = function()
+					FutureController.OpenCompareWith(m.UserId)
+				end })
+				if leader then
+					table.insert(buttons, { Name = "Remove" .. m.UserId, Text = "Remove", Width = 130, OnClick = function()
+						local confirmed = UIController.Confirm({ Title = "Remove " .. m.DisplayName .. "?", Text = "They'll leave your Life Circle.", ConfirmText = "Remove", Danger = true })
+						if confirmed then
+							act("PartyKick", m.UserId)
+						end
+					end })
+				end
+			end
+			row(column, 2 + i, (if m.IsLeader then "👑 " else "") .. m.DisplayName .. (if m.UserId == me.UserId then " (you)" else ""), memberSummary(m), buttons)
+		end
+		local eventText = if state.EventActive then "Deciding…" elseif state.EventCooldown > 0 then ("Group decision (%ds)"):format(state.EventCooldown) else "Group decision"
+		row(column, 10, "Do something together", "Start a group decision for everyone to vote on, or watch everyone's futures in a Group Life Reveal.", {
+			{ Name = "StartGroupEvent", Text = eventText, Icon = "🎲", Style = "Primary", Width = 250, Disabled = state.EventActive, OnClick = function()
+				act("PartyStartEvent")
+			end },
+			{ Name = "StartGroupReveal", Text = if state.RevealCooldown > 0 then ("Group reveal (%ds)"):format(state.RevealCooldown) else "Group reveal", Icon = "🔮", Style = "Accent", Width = 230, OnClick = function()
+				act("PartyStartReveal")
+			end },
+			{ Name = "LeaveCircle", Text = "Leave", Icon = "🚪", Width = 130, OnClick = function()
+				act("PartyLeave")
+			end },
+		})
+	end
+
+	-- Players here
+	heading(column, "👥 PLAYERS IN THIS SERVER", 20)
+	local others = 0
+	for i, p in ipairs(Players:GetPlayers()) do
+		if p ~= me then
+			others += 1
+			local already = inCircle(p.UserId)
+			local full = state and #state.Members >= state.MaxMembers
+			row(column, 20 + i, p.DisplayName or p.Name, if already then "In your circle" else "", {
+				{ Name = "Invite" .. p.UserId, Text = if already then "In circle" else "Invite", Icon = "🤝", Style = "Primary", Width = 160, Disabled = already or full, OnClick = function()
+					local ok = act("PartyInvite", p.UserId)
+					if ok then
+						NotificationController.Notify({ Title = "🤝 Invite sent", Text = (p.DisplayName or p.Name) .. " has 45 seconds to accept.", Kind = "Success", Duration = 3 })
+					end
+				end },
+				{ Name = "CompareP" .. p.UserId, Text = "Compare", Icon = "⚖️", Width = 150, OnClick = function()
+					FutureController.OpenCompareWith(p.UserId)
+				end },
+			})
+		end
+	end
+	if others == 0 then
+		Create.Label({ Text = "Nobody else is in this server yet.", TextColor3 = Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 21, Parent = column })
+	end
+
+	-- Invite Roblox friends
+	heading(column, "📨 INVITE YOUR ROBLOX FRIENDS", 60)
+	row(column, 61, "Bring your friends into this server", "They'll get a Roblox invite to join you here.", {
+		{ Name = "InviteFriends", Text = "Invite friends", Icon = "📨", Style = "Accent", Width = 220, OnClick = function()
+			local ok = pcall(function()
+				local SocialService = game:GetService("SocialService")
+				if SocialService:CanSendGameInviteAsync(Players.LocalPlayer) then
+					SocialService:PromptGameInvite(Players.LocalPlayer)
+				else
+					error("cannot invite")
+				end
+			end)
+			if not ok then
+				NotificationController.Notify({ Title = "Invites unavailable", Text = "Roblox invites only work in a published game, not in Studio.", Kind = "Warning" })
+			end
+		end },
+	})
+
+	-- Friends elsewhere
+	heading(column, "🌍 FRIENDS PLAYING IN OTHER SERVERS", 70)
+	if elsewhere == nil then
+		findFriendsElsewhere()
+	end
+	if elsewhere == "loading" then
+		Create.Label({ Text = "Looking for friends…", TextColor3 = Theme.Color.TextDim, LayoutOrder = 71, Parent = column })
+	elseif type(elsewhere) == "table" and #elsewhere == 0 then
+		Create.Label({ Text = "No friends are playing CHOOSE YOUR LIFE in other servers right now.", TextColor3 = Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 71, Parent = column })
+	elseif type(elsewhere) == "table" then
+		for i, f in ipairs(elsewhere) do
+			row(column, 71 + i, f.DisplayName or f.UserName or "Friend", "Playing in another server", {
+				{ Name = "Join" .. tostring(f.VisitorId), Text = "Join their server", Icon = "🚀", Style = "Primary", Width = 240, OnClick = function()
+					local ok = act("JoinFriendServer", f.PlaceId, f.GameId)
+					if ok then
+						NotificationController.Notify({ Title = "🚀 Joining…", Text = "Teleporting you to " .. (f.DisplayName or "your friend") .. "'s server.", Kind = "Info" })
+					end
+				end },
+			})
+		end
+	end
+	Components.Button({ Name = "RefreshFriends", Text = "Refresh", Icon = "🔄", Style = "Ghost", Size = UDim2.fromOffset(160, 44), LayoutOrder = 99, Parent = column, OnClick = function()
+		elsewhere = nil
+		render()
+	end })
+end
+
+function FriendsController.Init()
+	frame = UIController.NewScreen("Friends", { Back = true, OnOpen = function()
+		elsewhere = nil
+		render()
+	end })
+	HUDController.AddAction({ Id = "Circle", Icon = "🤝", Order = 8, OnClick = function()
+		UIController.Show("Friends")
+	end })
+end
+
+function FriendsController.Start()
+	PartyController.Changed:Connect(function()
+		if UIController.Current() == "Friends" then
+			render()
+		end
+	end)
+	for _, signal in ipairs({ Players.PlayerAdded, Players.PlayerRemoving }) do
+		signal:Connect(function()
+			task.defer(function()
+				if UIController.Current() == "Friends" then
+					render()
+				end
+			end)
+		end)
+	end
+	UIController.LayoutChanged:Connect(function()
+		if UIController.Current() == "Friends" then
+			render()
+		end
+	end)
+end
+
+return FriendsController
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="69">
             <Properties>
               <string name="Name">FutureController</string>
               <string name="Source"><![CDATA[--[[
@@ -9637,6 +11253,12 @@ local function compareView(me, them)
 			Create.Label({ Text = ("%s %s   %d  vs  %d"):format(info.Icon, info.DisplayName, mine.Stats[statName], theirs.Stats[statName]), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 40 + i, Parent = scroll })
 		end
 		Create.Label({ Text = ("💰 Net worth   %s  vs  %s"):format(Format.Money(mine.NetWorth), Format.Money(theirs.NetWorth)), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 60, Parent = scroll })
+		heading(scroll, "LIFESTYLE: HOMES & CARS", 61)
+		local function owned(card)
+			return if card.Assets and #card.Assets > 0 then table.concat(card.Assets, ", ") else "Nothing yet"
+		end
+		Create.Label({ Text = "You: " .. owned(mine), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 62, Parent = scroll })
+		Create.Label({ Text = them.DisplayName .. ": " .. owned(theirs), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 63, Parent = scroll })
 	elseif not theirs.Stats then
 		Create.Label({ Text = "🔒 " .. them.DisplayName .. " keeps their exact stats private.", TextColor3 = Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 40, Parent = scroll })
 	end
@@ -9721,6 +11343,40 @@ FutureController.OpenCompare = function()
 	renderCompare()
 end
 
+-- Opens a side-by-side comparison with one player (from Play With Friends).
+function FutureController.OpenCompareWith(userId: number)
+	if not DataController.GetActiveLife() then
+		NotificationController.Notify({ Title = "Start a life first", Text = "You need a life in progress to compare futures.", Kind = "Info" })
+		return
+	end
+	handle = UIController.OpenPanel({ Name = "FutureModal", Title = "⚖️  Compare Futures", Width = 760, OnClose = function()
+		handle = nil
+	end })
+	handle.Subtitle.Text = "Loading…"
+	local ok, cards = Net.Invoke("GetLifeCards")
+	if not handle or not handle.IsOpen() then
+		return
+	end
+	local me, them = nil, nil
+	if ok then
+		for _, c in ipairs(cards) do
+			if c.IsYou then
+				me = c
+			elseif c.UserId == userId then
+				them = c
+			end
+		end
+	end
+	if me and me.Card and them and them.Card then
+		compareView(me, them)
+	else
+		handle.Clear()
+		handle.Subtitle.Text = ""
+		local reason = if not ok then tostring(cards) elseif not them then "That player isn't here any more." elseif them.NoLife then them.DisplayName .. " is between lives right now." else "🔒 " .. them.DisplayName .. " keeps their future private."
+		Create.Label({ Text = reason, TextColor3 = Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = handle.Scroll })
+	end
+end
+
 function FutureController.Init()
 	HUDController.AddAction({ Id = "Future", Icon = "🔮", Order = 5, OnClick = FutureController.Open })
 end
@@ -9731,7 +11387,7 @@ return FutureController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="65">
+          <Item class="ModuleScript" referent="70">
             <Properties>
               <string name="Name">GraphicsController</string>
               <string name="Source"><![CDATA[--[[
@@ -9795,7 +11451,7 @@ return GraphicsController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="66">
+          <Item class="ModuleScript" referent="71">
             <Properties>
               <string name="Name">HUDController</string>
               <string name="Source"><![CDATA[--[[
@@ -10116,7 +11772,7 @@ return HUDController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="67">
+          <Item class="ModuleScript" referent="72">
             <Properties>
               <string name="Name">LifeHistoryController</string>
               <string name="Source"><![CDATA[--[[
@@ -10383,7 +12039,7 @@ return LifeHistoryController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="68">
+          <Item class="ModuleScript" referent="73">
             <Properties>
               <string name="Name">LifestyleController</string>
               <string name="Source"><![CDATA[--[[
@@ -10519,7 +12175,7 @@ return LifestyleController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="69">
+          <Item class="ModuleScript" referent="74">
             <Properties>
               <string name="Name">LoadingController</string>
               <string name="Source"><![CDATA[--[[
@@ -10658,7 +12314,7 @@ return LoadingController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="70">
+          <Item class="ModuleScript" referent="75">
             <Properties>
               <string name="Name">MenuController</string>
               <string name="Source"><![CDATA[--[[
@@ -11300,7 +12956,7 @@ return MenuController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="71">
+          <Item class="ModuleScript" referent="76">
             <Properties>
               <string name="Name">NotificationController</string>
               <string name="Source"><![CDATA[--[[
@@ -11421,7 +13077,382 @@ return NotificationController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="72">
+          <Item class="ModuleScript" referent="77">
+            <Properties>
+              <string name="Name">PartyController</string>
+              <string name="Source"><![CDATA[--[[
+	PartyController  (StarterPlayerScripts.Client.Controllers.PartyController)
+	Client side of Life Circles and city events (server: PartyService,
+	CityEventService).
+	  • keeps the current circle state (PartyController.Get / .Changed)
+	  • shows circle invites with Join / No thanks
+	  • opens the group-decision vote panel, live tally and countdown, then
+	    what the group chose and what it meant for YOUR life
+	  • plays Group Life Reveals (RevealController.PlayGroup)
+	  • shows city-event invitations with Join / Skip, and a summary
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Net = require(Shared.Net)
+local Signal = require(Shared.Util.Signal)
+local Format = require(Shared.Util.Format)
+local StatDefinitions = require(Shared.Data.StatDefinitions)
+
+local UILib = script.Parent.Parent:WaitForChild("UILib")
+local Theme = require(UILib.Theme)
+local Create = require(UILib.Create)
+local Anim = require(UILib.Anim)
+local Components = require(UILib.Components)
+
+local UIController = require(script.Parent.UIController)
+local NotificationController = require(script.Parent.NotificationController)
+local AudioController = require(script.Parent.AudioController)
+local RevealController = require(script.Parent.RevealController)
+
+local PartyController = {}
+PartyController.Priority = 49
+PartyController.Changed = Signal.new() -- (state or false)
+
+local state = false
+local promptStack: Frame
+local vote = nil -- { Payload, Handle, Votes, MyVote, Deadline }
+
+local ERRORS = {
+	NotHere = "That player isn't in this server any more.",
+	PartyFull = "That circle is full (4 players max).",
+	AlreadyInvited = "You've already invited them.",
+	AlreadyMember = "They're already in your circle.",
+	Expired = "That invite has expired.",
+	NoInvite = "That invite is no longer valid.",
+	Cooldown = "Give it a moment before the next one.",
+	EventActive = "Your circle is already deciding something.",
+	NotEveryoneReady = "Everyone in the circle needs a life in progress.",
+	NoParty = "You're not in a circle.",
+	NotLeader = "Only the circle leader can do that.",
+	ChoiceLocked = "Not everyone in the circle can do that one.",
+	NotEligible = "You can't join this one.",
+	RateLimited = "Slow down a moment.",
+}
+function PartyController.ErrorText(reason: any): string
+	return ERRORS[reason] or tostring(reason)
+end
+
+function PartyController.Get()
+	return state
+end
+
+function PartyController.MyUserId(): number
+	return Players.LocalPlayer.UserId
+end
+
+function PartyController.IsLeader(): boolean
+	return state ~= false and state.LeaderUserId == PartyController.MyUserId()
+end
+
+local function setState(newState)
+	state = newState or false
+	PartyController.Changed:Fire(state)
+end
+
+-- ===== Small prompt cards (invites, city events) =====
+local function promptCard(name: string, title: string, body: string, seconds: number, buttons)
+	local card = Create("CanvasGroup", {
+		Name = name,
+		BackgroundColor3 = Theme.Color.Surface,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = promptStack,
+	}, { Create.Corner(Theme.Radius), Create.Stroke(Theme.Color.Gold, 2, 0.1), Create.Padding(14, 16) })
+	Create.List(Enum.FillDirection.Vertical, 8).Parent = card
+	Create.Label({ Text = title, FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H3, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = card })
+	Create.Label({ Text = body, TextColor3 = Theme.Color.TextDim, TextSize = Theme.TextSize.Small, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = card })
+	local timer = Create.Label({ Name = "Timer", Text = "", TextSize = Theme.TextSize.Tiny, TextColor3 = Theme.Color.TextFaint, LayoutOrder = 3, Parent = card })
+	local row = Create("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 48), LayoutOrder = 4, Parent = card })
+	Create.List(Enum.FillDirection.Horizontal, 10).Parent = row
+	local done = false
+	local function close()
+		if done then
+			return
+		end
+		done = true
+		Anim.Fade(card, false, 0.2)
+		task.delay(0.3, function()
+			card:Destroy()
+		end)
+	end
+	for i, b in ipairs(buttons) do
+		Components.Button({ Name = b.Name, Text = b.Text, Style = b.Style or (if i == 1 then "Primary" else "Secondary"), Size = UDim2.fromOffset(b.Width or 170, 46), TextSize = 18, LayoutOrder = i, Parent = row, OnClick = function()
+			if done then
+				return
+			end
+			close()
+			if b.OnClick then
+				task.spawn(b.OnClick)
+			end
+		end })
+	end
+	Anim.Fade(card, true, 0.2)
+	AudioController.Play("Notify")
+	task.spawn(function()
+		local deadline = os.clock() + seconds
+		while not done and os.clock() < deadline do
+			timer.Text = ("%ds left"):format(math.ceil(deadline - os.clock()))
+			task.wait(0.5)
+		end
+		close()
+	end)
+	return card
+end
+
+local function onInvite(invite)
+	promptCard("Invite" .. invite.InviteId, "🤝 " .. invite.FromName .. " invited you", "Join their Life Circle to make group decisions, compare futures and watch Group Life Reveals together. Your own life stays yours.", invite.Seconds or 45, {
+		{ Name = "AcceptInvite", Text = "Join", OnClick = function()
+			local ok, result = Net.Invoke("PartyRespond", invite.InviteId, true)
+			if ok then
+				NotificationController.Notify({ Title = "🤝 Life Circle", Text = "You joined " .. invite.FromName .. "'s circle!", Kind = "Success" })
+			else
+				NotificationController.Notify({ Title = "Couldn't join", Text = PartyController.ErrorText(result), Kind = "Warning" })
+			end
+		end },
+		{ Name = "DeclineInvite", Text = "No thanks", OnClick = function()
+			Net.Invoke("PartyRespond", invite.InviteId, false)
+		end },
+	})
+end
+
+-- ===== Group decisions =====
+local function previewText(choice): string
+	local parts = {}
+	for _, p in ipairs(choice.Preview or {}) do
+		local info = StatDefinitions.Info[p.Stat]
+		if info then
+			table.insert(parts, ("%s<font color=\"%s\">%s</font>"):format(info.Icon, if p.Dir > 0 then Theme.Hex.Positive else Theme.Hex.Negative, string.rep(if p.Dir > 0 then "▲" else "▼", p.Size)))
+		end
+	end
+	if choice.Risky then
+		table.insert(parts, "🎲<font color=\"" .. Theme.Hex.Gold .. "\">Risky</font>")
+	end
+	for _, tag in ipairs(choice.Tags or {}) do
+		table.insert(parts, "<font color=\"" .. Theme.Hex.Gold .. "\">" .. tag .. "</font>")
+	end
+	return table.concat(parts, "   ")
+end
+
+local function nameFor(userId: string): string
+	if state then
+		for _, m in ipairs(state.Members) do
+			if tostring(m.UserId) == userId then
+				return m.DisplayName
+			end
+		end
+	end
+	for _, p in ipairs(Players:GetPlayers()) do
+		if tostring(p.UserId) == userId then
+			return p.DisplayName or p.Name
+		end
+	end
+	return "Someone"
+end
+
+local renderVote
+function renderVote()
+	if not vote or not vote.Handle or not vote.Handle.IsOpen() then
+		return
+	end
+	local payload = vote.Payload
+	local handle = vote.Handle
+	handle.Clear()
+	local scroll = handle.Scroll
+	Create.Label({ Text = payload.Description, TextColor3 = Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = scroll })
+	Create.Label({ Text = "Everyone votes. The majority decides, and each of you lives with the result in your own life.", TextSize = Theme.TextSize.Tiny, TextColor3 = Theme.Color.TextFaint, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = scroll })
+	local votersByChoice = {}
+	for userId, choiceId in pairs(vote.Votes) do
+		votersByChoice[choiceId] = votersByChoice[choiceId] or {}
+		table.insert(votersByChoice[choiceId], nameFor(userId))
+	end
+	for i, choice in ipairs(payload.Choices) do
+		local mine = vote.MyVote == choice.Id
+		local card = Create("TextButton", {
+			Name = "Vote" .. choice.Id,
+			Text = "",
+			AutoButtonColor = false,
+			Selectable = not choice.Locked,
+			BackgroundColor3 = if mine then Theme.Color.SurfaceHigher else Theme.Color.SurfaceHigh,
+			BackgroundTransparency = if choice.Locked then 0.5 else 0.05,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = 10 + i,
+			Parent = scroll,
+		}, { Create.Corner(Theme.RadiusSmall), Create.Stroke(if mine then Theme.Color.Primary else Theme.Color.Stroke, if mine then 3 else 1.5, if mine then 0 else 0.4), Create.Padding(12, 14) })
+		Create.List(Enum.FillDirection.Vertical, 4).Parent = card
+		Create.Label({ Text = (if choice.Locked then "🔒 " elseif mine then "✅ " else "") .. choice.Text, FontFace = Theme.Font.Heavy, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = card })
+		Create.Label({ Text = if choice.Locked then (choice.LockHint or "Locked") else choice.Description, TextSize = Theme.TextSize.Small, TextColor3 = if choice.Locked then Theme.Color.Warning else Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = card })
+		if not choice.Locked then
+			Create.Label({ Text = previewText(choice), RichText = true, TextSize = Theme.TextSize.Small, FontFace = Theme.Font.Bold, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, Parent = card })
+		end
+		local voters = votersByChoice[choice.Id]
+		if voters then
+			Create.Label({ Name = "Voters", Text = ("🗳️ %d: %s"):format(#voters, table.concat(voters, ", ")), TextSize = Theme.TextSize.Small, TextColor3 = Theme.Color.Gold, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4, Parent = card })
+		end
+		card.Activated:Connect(function()
+			if choice.Locked then
+				NotificationController.Notify({ Title = "Locked", Text = choice.LockHint or "Not everyone can do this.", Kind = "Warning", Duration = 2.5 })
+				return
+			end
+			if Components.OnClickSound then
+				Components.OnClickSound()
+			end
+			vote.MyVote = choice.Id
+			renderVote()
+			local ok, result = Net.Invoke("PartyVote", payload.EventId, choice.Id)
+			if not ok then
+				NotificationController.Notify({ Title = "Vote not counted", Text = PartyController.ErrorText(result), Kind = "Warning" })
+			end
+		end)
+	end
+end
+
+local function onGroupEvent(payload)
+	vote = { Payload = payload, Votes = {}, MyVote = nil, Deadline = os.clock() + (payload.Seconds or 40) }
+	local handle = UIController.OpenPanel({ Name = "GroupEventModal", Title = payload.Icon .. "  Group Decision: " .. payload.Title, Width = 760 })
+	vote.Handle = handle
+	AudioController.Play("Notify")
+	renderVote()
+	local current = vote
+	task.spawn(function()
+		while vote == current and handle.IsOpen() and not current.Result do
+			local left = math.max(0, math.ceil(current.Deadline - os.clock()))
+			handle.Subtitle.Text = ("Vote now · %ds left · started by %s"):format(left, payload.StartedBy)
+			task.wait(0.5)
+		end
+	end)
+end
+
+local function onGroupVote(update)
+	if vote and vote.Payload.EventId == update.EventId then
+		vote.Votes = update.Votes
+		renderVote()
+	end
+end
+
+local function changeLines(result)
+	local parts = {}
+	for _, text in ipairs(result.LifeChanges or {}) do
+		table.insert(parts, text)
+	end
+	for stat, delta in pairs(result.Applied or {}) do
+		local info = StatDefinitions.Info[stat]
+		if info and math.abs(delta) >= 0.5 then
+			table.insert(parts, info.Icon .. " " .. Format.Signed(delta))
+		end
+	end
+	if result.MoneyDelta and result.MoneyDelta ~= 0 then
+		table.insert(parts, "💰 " .. (if result.MoneyDelta > 0 then "+" else "") .. Format.Money(result.MoneyDelta))
+	end
+	return parts
+end
+
+local function onGroupResult(result)
+	local handle = if vote and vote.Payload.EventId == result.EventId and vote.Handle.IsOpen() then vote.Handle else nil
+	if vote and vote.Payload.EventId == result.EventId then
+		vote.Result = result
+	end
+	if not handle then
+		handle = UIController.OpenPanel({ Name = "GroupEventModal", Title = result.Icon .. "  Group Decision: " .. result.Title, Width = 760 })
+	end
+	handle.Clear()
+	local scroll = handle.Scroll
+	local chosenText = result.ChoiceText
+	local count = result.Tally and result.Tally[result.ChoiceId] or 0
+	handle.Subtitle.Text = if result.NoVotes then "Nobody voted, so fate decided" elseif result.Tie then "It was a tie, settled by chance" else ("Decided by %d vote%s"):format(count, if count == 1 then "" else "s")
+	Create.Label({ Name = "Chosen", Text = "The group chose: " .. chosenText, FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H2, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = scroll })
+	if result.Lucky then
+		Components.Chip({ Text = "🎲 Fate stepped in!", TextColor = Theme.Color.Gold, LayoutOrder = 2, Parent = scroll })
+	end
+	Create.Label({ Name = "Story", Text = result.Story, TextSize = Theme.TextSize.H3, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, Parent = scroll })
+	local lines = changeLines(result)
+	if #lines > 0 then
+		Create.Label({ Text = "For your life:  " .. table.concat(lines, "   "), FontFace = Theme.Font.Bold, TextColor3 = Theme.Color.Gold, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4, Parent = scroll })
+	end
+	Components.Button({ Name = "CloseGroupResult", Text = "Nice!", Icon = "👍", Style = "Primary", Size = UDim2.new(1, 0, 0, 52), LayoutOrder = 10, Parent = scroll, OnClick = function()
+		UIController.ClosePanel()
+	end })
+	AudioController.Play("Positive")
+end
+
+-- ===== City events =====
+local function onCityEvent(event)
+	if not event.Eligible then
+		promptCard("City" .. event.EventId, event.Icon .. " " .. event.Title, event.Description .. "\n(You can't join this one right now.)", event.Seconds or 45, {
+			{ Name = "CityOk", Text = "OK", Style = "Secondary" },
+		})
+		return
+	end
+	promptCard("City" .. event.EventId, event.Icon .. " " .. event.Title, event.Description, event.Seconds or 45, {
+		{ Name = "CityJoin", Text = event.JoinText, Width = 220, OnClick = function()
+			local ok, result = Net.Invoke("CityEventRespond", event.EventId, true)
+			if ok and result.Joined then
+				local lines = changeLines(result)
+				NotificationController.Notify({ Title = event.Icon .. " " .. event.Title, Text = result.Story .. (if #lines > 0 then "  " .. table.concat(lines, "  ") else ""), Kind = "Success", Duration = 6 })
+			elseif not ok then
+				NotificationController.Notify({ Title = "Couldn't join", Text = PartyController.ErrorText(result), Kind = "Warning" })
+			end
+		end },
+		{ Name = "CitySkip", Text = event.SkipText, Width = 220, OnClick = function()
+			Net.Invoke("CityEventRespond", event.EventId, false)
+		end },
+	})
+end
+
+local function onCitySummary(summary)
+	if summary.Invited and summary.Invited > 1 then
+		NotificationController.Notify({ Title = summary.Icon .. " " .. summary.Title, Text = ("%d of %d people in this server joined in."):format(summary.Joined, summary.Invited), Kind = "Info", Duration = 4 })
+	end
+end
+
+-- ===== Lifecycle =====
+function PartyController.Init()
+	promptStack = Create("Frame", {
+		Name = "Prompts",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 12),
+		Size = UDim2.fromOffset(math.min(460, UIController.GetVirtualSize().X - 24), 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		ZIndex = 45,
+		Parent = UIController.GetOverlay(),
+	})
+	Create.List(Enum.FillDirection.Vertical, 8, Enum.HorizontalAlignment.Center).Parent = promptStack
+	UIController.LayoutChanged:Connect(function()
+		promptStack.Size = UDim2.fromOffset(math.min(460, UIController.GetVirtualSize().X - 24), 0)
+	end)
+end
+
+function PartyController.Start()
+	Net.OnEvent("PartyUpdate", setState)
+	Net.OnEvent("PartyInviteReceived", onInvite)
+	Net.OnEvent("GroupEvent", onGroupEvent)
+	Net.OnEvent("GroupVote", onGroupVote)
+	Net.OnEvent("GroupEventResult", onGroupResult)
+	Net.OnEvent("GroupReveal", function(payload)
+		task.spawn(RevealController.PlayGroup, payload)
+	end)
+	Net.OnEvent("CityEvent", onCityEvent)
+	Net.OnEvent("CityEventSummary", onCitySummary)
+	local ok, current = Net.Invoke("GetPartyState")
+	if ok then
+		setState(current)
+	end
+end
+
+return PartyController
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="78">
             <Properties>
               <string name="Name">PeopleController</string>
               <string name="Source"><![CDATA[--[[
@@ -11635,7 +13666,7 @@ return PeopleController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="73">
+          <Item class="ModuleScript" referent="79">
             <Properties>
               <string name="Name">RevealController</string>
               <string name="Source"><![CDATA[--[[
@@ -12278,6 +14309,77 @@ function RevealController.PlayFinal(entry, options)
 	return result
 end
 
+-- ===== Group Life Reveal (a Life Circle watches together) =====
+function RevealController.PlayGroup(payload)
+	-- If another reveal is showing (e.g. your own stage reveal), wait for it.
+	local waited = 0
+	while playing and waited < 90 do
+		waited += task.wait(0.25)
+	end
+	if playing then
+		return
+	end
+	begin()
+	local width = math.min(700, size().X - 40)
+
+	local step = newStep()
+	lightRays(step, Theme.Color.AccentAlt)
+	local col = column(step, width)
+	local title = label(col, { Text = "👥  GROUP LIFE REVEAL", FontFace = Theme.Font.Heavy, TextSize = 56, LayoutOrder = 1 })
+	Create.Gradient(Theme.Gradient.Title).Parent = title
+	label(col, { Text = ("Started by %s · %d lives, %d possible futures"):format(payload.StartedBy, #payload.Cards, #payload.Cards), TextColor3 = Theme.Color.TextDim, LayoutOrder = 2 })
+	Anim.Pop(title, 0.6, 0.9)
+	pause(1.8)
+
+	for _, entry in ipairs(payload.Cards) do
+		if session.Skip then
+			break
+		end
+		local s2 = newStep()
+		local c2 = column(s2, width)
+		label(c2, { Text = entry.DisplayName .. (if entry.IsYou then " (you)" else ""), FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H1, LayoutOrder = 1 })
+		if entry.Hidden or not entry.Card then
+			label(c2, { Text = if entry.NoLife then "Between lives right now." else "🔒 Keeps their future private.", TextColor3 = Theme.Color.TextDim, TextSize = Theme.TextSize.H3, LayoutOrder = 2 })
+			pause(1.2)
+		else
+			local card = entry.Card
+			label(c2, { Text = ("%s · age %d · %s · %s"):format(card.LifeName, card.Age, card.StageName, card.Career), TextColor3 = Theme.Color.TextDim, LayoutOrder = 2 })
+			local starters = {}
+			local positives = Futures.Sorted(card.Predictions)
+			for i = 1, math.min(3, #positives) do
+				table.insert(starters, futureBar(c2, positives[i], nil, 10 + i, width))
+			end
+			for _, start in ipairs(starters) do
+				start(0.6)
+				pause(0.25)
+			end
+			local headline = label(c2, { Text = card.Headline, FontFace = Theme.Font.Bold, TextColor3 = Theme.Color.Gold, LayoutOrder = 20 })
+			typewrite(headline, 60)
+			pause(1.6)
+		end
+	end
+
+	if not session.Skip and #payload.Superlatives > 0 then
+		local s3 = newStep()
+		lightRays(s3, Theme.Color.Gold)
+		local c3 = column(s3, width)
+		label(c3, { Text = "MOST LIKELY TO…", FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H1, LayoutOrder = 1 })
+		for i = 1, math.min(6, #payload.Superlatives) do
+			local s = payload.Superlatives[i]
+			local info = Futures.Info[s.Id]
+			local line = label(c3, { Text = ("%s %s: <b>%s</b> (%d%%)"):format(info.Icon, info.Title, s.DisplayName, s.Pct), RichText = true, TextSize = Theme.TextSize.H3, LayoutOrder = 1 + i })
+			Anim.Pop(line, 0.7, 0.3)
+			pause(0.5)
+		end
+		pause(2)
+	end
+
+	endCard("Same start. Different futures.", "Keep choosing. Every one of these futures can still change.", {
+		{ Name = "RevealGroupClose", Text = "Close", Icon = "👍", Result = "Close", Width = 240 },
+	})
+	finish()
+end
+
 function RevealController.Init()
 	gui = Create("ScreenGui", {
 		Name = "CYL_Reveal",
@@ -12303,7 +14405,7 @@ return RevealController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="74">
+          <Item class="ModuleScript" referent="80">
             <Properties>
               <string name="Name">SettingsController</string>
               <string name="Source"><![CDATA[--[[
@@ -12463,7 +14565,7 @@ return SettingsController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="75">
+          <Item class="ModuleScript" referent="81">
             <Properties>
               <string name="Name">SettingsMenu</string>
               <string name="Source"><![CDATA[--[[
@@ -12625,7 +14727,7 @@ return SettingsMenu
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="76">
+          <Item class="ModuleScript" referent="82">
             <Properties>
               <string name="Name">UIController</string>
               <string name="Source"><![CDATA[--[[
@@ -13128,7 +15230,7 @@ return UIController
             </Properties>
           </Item>
         </Item>
-        <Item class="LocalScript" referent="77">
+        <Item class="LocalScript" referent="83">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[--[[
@@ -13185,11 +15287,11 @@ end
 ]]></string>
           </Properties>
         </Item>
-        <Item class="Folder" referent="78">
+        <Item class="Folder" referent="84">
           <Properties>
             <string name="Name">UILib</string>
           </Properties>
-          <Item class="ModuleScript" referent="79">
+          <Item class="ModuleScript" referent="85">
             <Properties>
               <string name="Name">Anim</string>
               <string name="Source"><![CDATA[--[[
@@ -13301,7 +15403,7 @@ return Anim
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="80">
+          <Item class="ModuleScript" referent="86">
             <Properties>
               <string name="Name">Components</string>
               <string name="Source"><![CDATA[--[[
@@ -13822,7 +15924,7 @@ return Components
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="81">
+          <Item class="ModuleScript" referent="87">
             <Properties>
               <string name="Name">Create</string>
               <string name="Source"><![CDATA[--[[
@@ -13938,7 +16040,7 @@ return Create
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="82">
+          <Item class="ModuleScript" referent="88">
             <Properties>
               <string name="Name">Layout</string>
               <string name="Source"><![CDATA[--[[
@@ -14043,7 +16145,7 @@ return Layout
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="83">
+          <Item class="ModuleScript" referent="89">
             <Properties>
               <string name="Name">Theme</string>
               <string name="Source"><![CDATA[--[[
@@ -14137,12 +16239,12 @@ return Theme
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="84">
+  <Item class="Workspace" referent="90">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="NeedsPivotMigration">false</bool>
     </Properties>
-    <Item class="Part" referent="85">
+    <Item class="Part" referent="91">
       <Properties>
         <string name="Name">Baseplate</string>
         <bool name="Anchored">true</bool>
@@ -14171,7 +16273,7 @@ return Theme
         <token name="TopSurface">0</token>
       </Properties>
     </Item>
-    <Item class="SpawnLocation" referent="86">
+    <Item class="SpawnLocation" referent="92">
       <Properties>
         <string name="Name">SpawnLocation</string>
         <bool name="Anchored">true</bool>

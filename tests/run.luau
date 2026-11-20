@@ -264,6 +264,27 @@ local DataService = server.require("ServerScriptService.Server.Services.DataServ
 local StatService = server.require("ServerScriptService.Server.Services.StatService")
 local NetS = server.require("ReplicatedStorage.Shared.Net")
 
+test("Every server service loads (no silent failures)", function()
+	local fs = require("@lune/fs")
+	local expected = 0
+	for _, name in ipairs(fs.readDir("src/server/Services")) do
+		if name:match("%.luau$") then
+			expected += 1
+		end
+	end
+	for _, w in ipairs(server.warnings) do
+		ok(not w:find("Failed to load") and not w:find("failed:"), "server warning: " .. w)
+	end
+	local loaded = 0
+	for _, module in ipairs(server.game.ServerScriptService.Server.Services:GetChildren()) do
+		local okReq = pcall(server.require, "ServerScriptService.Server.Services." .. module.Name)
+		if okReq then
+			loaded += 1
+		end
+	end
+	eq(loaded, expected, "all services in src/server/Services load")
+end)
+
 test("Remotes folder created with every definition", function()
 	for name in pairs(NetS.Definitions.Events) do
 		ok(server.remote(name), name)
@@ -451,6 +472,7 @@ test("Falls back to MockDataStore when DataStores are unavailable (Studio)", fun
 end)
 
 require("./life_spec")(H)
+require("./multiplayer_spec")(H)
 require("./client_spec")(H)
 
 -- ======================================================================

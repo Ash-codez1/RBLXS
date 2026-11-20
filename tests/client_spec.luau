@@ -12,12 +12,11 @@ return function(H)
 	local V2 = H.Datatypes.Vector2.new
 	local MockDataStore = H.new({ Quiet = true }).require("ServerScriptService.Server.Lib.MockDataStore")
 
-	local function bootPair(userId, options)
-		options = options or {}
+	local function newServer(jobId)
 		local store = MockDataStore.new()
 		local server = H.new({
 			Quiet = true,
-			JobId = "ui-" .. userId,
+			JobId = jobId,
 			DataStoreService = {
 				GetDataStore = function()
 					return store
@@ -28,10 +27,20 @@ return function(H)
 			},
 		})
 		server.run("ServerScriptService.Server.Main")
-		local serverPlayer = server.addPlayer(userId, "UiTester")
+		return server
+	end
+
+	-- Boots a client for `userId` against `server` (shared by several clients in multiplayer tests).
+	local function bootClient(server, userId, options)
+		options = options or {}
+		local name = options.Name or "UiTester"
+		local serverPlayer = server.addPlayer(userId, name)
 		task.wait(0.05)
 		local client = H.new({ Quiet = true, IsServer = false, Viewport = options.Viewport, Gamepad = options.Gamepad, Touch = options.Touch })
-		client.makeLocalPlayer(userId, "UiTester")
+		client.makeLocalPlayer(userId, name)
+		for _, other in ipairs(options.Others or {}) do
+			client.addOtherPlayer(other.UserId, other.Name)
+		end
 		H.bridge(server, client, serverPlayer)
 		client.run("StarterPlayerScripts.Client.Main")
 		task.wait(1.3) -- loading screen hands over to the menu
@@ -153,6 +162,10 @@ return function(H)
 			task.wait(0.15)
 		end
 		return api
+	end
+
+	local function bootPair(userId, options)
+		return bootClient(newServer("ui-" .. userId), userId, options)
 	end
 
 	section("Client UI: desktop (1280×720) end-to-end")
@@ -512,4 +525,108 @@ return function(H)
 		ok(clean, report)
 	end)
 	pad.server.close()
+
+	section("Client UI: two players in one server (Life Circles)")
+	local mpServer = newServer("ui-mp")
+	local ana = bootClient(mpServer, 3001, { Name = "Ana", Others = { { UserId = 3002, Name = "Ben" } } })
+	local ben = bootClient(mpServer, 3002, { Name = "Ben", Others = { { UserId = 3001, Name = "Ana" } } })
+	local function startLife(api, name)
+		api.click(api.button(api.screen("Menu"), "Play"), 0.3)
+		local box = H.find(api.screen("NameEntry"), function(d)
+			return d.ClassName == "TextBox"
+		end)
+		box.Text = name
+		api.click(api.button(api.screen("NameEntry"), "Start Life"), 0.6)
+	end
+
+	test("Play With Friends lists the other player; invite and accept through the UI", function()
+		startLife(ana, "Annie")
+		startLife(ben, "Benny")
+		eq(ana.UI.Current(), "Game")
+		ana.click(ana.screen("Game").HUD:FindFirstChild("Circle", true), 0.3)
+		eq(ana.UI.Current(), "Friends")
+		local friends = ana.screen("Friends")
+		ok(ana.label(friends, "Ben"), "Ben listed as a player in this server")
+		ana.click(friends:FindFirstChild("Invite3002", true), 0.4)
+		local prompt = ben.gui.CYL_Overlay.Root:FindFirstChild("AcceptInvite", true)
+		ok(prompt, "Ben sees the invite prompt")
+		ok(ben.label(ben.gui.CYL_Overlay.Root, "Ana invited you"), "with Ana's name")
+		ben.click(prompt, 0.5)
+		local Party = mpServer.require("ServerScriptService.Server.Services.PartyService")
+		ok(Party.SameParty(ana.player, ben.player), "server put them in one circle")
+		local AnaParty = ana.client.require("StarterPlayerScripts.Client.Controllers.PartyController")
+		ok(AnaParty.Get() and #AnaParty.Get().Members == 2, "Ana's client knows the circle")
+		task.wait(0.2)
+		ok(ana.label(ana.screen("Friends"), "Benny"), "Ana's circle shows Ben's life")
+	end)
+
+	test("Group decision: both vote in the UI and each life gets the result", function()
+		ana.click(ana.screen("Friends"):FindFirstChild("StartGroupEvent", true), 0.4)
+		local anaModal = ana.gui.CYL_Overlay.Root:FindFirstChild("GroupEventModal")
+		local benModal = ben.gui.CYL_Overlay.Root:FindFirstChild("GroupEventModal")
+		ok(anaModal and benModal, "both see the vote")
+		local choiceCard = H.find(anaModal, function(d)
+			return d.ClassName == "TextButton" and d.Name:sub(1, 4) == "Vote" and d.BackgroundTransparency < 0.4
+		end)
+		ok(choiceCard, "an open choice to vote for")
+		ana.click(choiceCard, 0.3)
+		ok(ben.label(ben.gui.CYL_Overlay.Root:FindFirstChild("GroupEventModal"), "🗳️ 1: Ana"), "Ben sees Ana's vote live")
+		ben.click(ben.gui.CYL_Overlay.Root:FindFirstChild("GroupEventModal"):FindFirstChild(choiceCard.Name, true), 0.6)
+		local anaResult = ana.gui.CYL_Overlay.Root:FindFirstChild("GroupEventModal")
+		ok(ana.label(anaResult, "The group chose"), "result shown to Ana")
+		ok(ben.label(ben.gui.CYL_Overlay.Root:FindFirstChild("GroupEventModal"), "The group chose"), "and to Ben")
+		local anaLife, benLife = ana.data().Slots.Slot1, ben.data().Slots.Slot1
+		eq(#anaLife.Shared, 1, "shared moment in Ana's life")
+		eq(#benLife.Shared, 1, "and in Ben's")
+		local benInAna = false
+		for _, p in ipairs(anaLife.People) do
+			if p.PlayerUserId == 3002 and p.Name == "Benny" then
+				benInAna = true
+			end
+		end
+		ok(benInAna, "Ben's character 'Benny' joined Ana's People")
+		ok(anaLife.Money >= 0 and benLife.Money >= 0, "money stays valid")
+		eq(#anaLife.Decisions, 0, "the group decision didn't count as one of Ana's own decisions")
+		ana.click(anaResult:FindFirstChild("CloseGroupResult", true), 0.3)
+	end)
+
+	test("Group Life Reveal plays for both players", function()
+		ana.click(ana.screen("Friends"):FindFirstChild("StartGroupReveal", true), 0.4)
+		local AnaReveal = ana.client.require("StarterPlayerScripts.Client.Controllers.RevealController")
+		local BenReveal = ben.client.require("StarterPlayerScripts.Client.Controllers.RevealController")
+		ok(AnaReveal.IsPlaying() and BenReveal.IsPlaying(), "both watching")
+		ok(ana.label(ana.gui.CYL_Reveal, "GROUP LIFE REVEAL"), "title")
+		ok(ana.finishReveal("RevealGroupClose"), "Ana closes it")
+		ok(ben.finishReveal("RevealGroupClose"), "Ben closes it")
+		task.wait(0.2)
+		ok(not AnaReveal.IsPlaying() and not BenReveal.IsPlaying(), "done")
+	end)
+
+	test("A city event invites everyone; joining works from the prompt", function()
+		local City = mpServer.require("ServerScriptService.Server.Services.CityEventService")
+		ok((City.Trigger("CE_Concert")), "city event started")
+		task.wait(0.2)
+		local join = ana.gui.CYL_Overlay.Root:FindFirstChild("CityJoin", true)
+		ok(join, "Ana sees the city event")
+		ok(ben.gui.CYL_Overlay.Root:FindFirstChild("CitySkip", true), "so does Ben")
+		local before = ana.data().Slots.Slot1.Stats.Happiness
+		ana.click(join, 0.4)
+		ok(ana.data().Slots.Slot1.Stats.Happiness > before, "joining changed Ana's life")
+		ben.click(ben.gui.CYL_Overlay.Root:FindFirstChild("CitySkip", true), 0.3)
+	end)
+
+	test("Leaving the circle through the UI; nobody's life is overwritten", function()
+		ana.click(ana.screen("Friends"):FindFirstChild("LeaveCircle", true), 0.4)
+		local Party = mpServer.require("ServerScriptService.Server.Services.PartyService")
+		eq(Party.PartyOf(ana.player), nil)
+		eq(Party.PartyOf(ben.player), nil, "a circle of one dissolves")
+		eq(ana.data().Slots.Slot1.Name, "Annie")
+		eq(ben.data().Slots.Slot1.Name, "Benny")
+		ok(ana.label(ana.screen("Friends"), "You're not in a circle yet"), "UI updated")
+		for _, api in ipairs({ ana, ben }) do
+			local clean, report = api.noErrors()
+			ok(clean, report)
+		end
+	end)
+	mpServer.close()
 end
