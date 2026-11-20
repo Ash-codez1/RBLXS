@@ -27,6 +27,11 @@ local function set(data)
 	if type(data) ~= "table" then
 		return
 	end
+	-- The server leaves Life History out of updates when it hasn't changed.
+	if data.HistoryUnchanged then
+		data.HistoryUnchanged = nil
+		data.LifeHistory = if current then current.LifeHistory else {}
+	end
 	local first = current == nil
 	current = data
 	DataController.Changed:Fire(data)

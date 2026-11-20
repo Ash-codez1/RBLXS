@@ -360,6 +360,8 @@ return function(H)
 		app.click(app.button(settings:FindFirstChild("My life stats", true), "›"), 0.1)
 		task.wait(1.2) -- debounce + save
 		local data = app.data()
+		local clientData = app.client.require("StarterPlayerScripts.Client.Controllers.DataController").Get()
+		eq(#clientData.LifeHistory, 1, "client keeps Life History across updates that leave it out")
 		eq(data.Settings.Notifications, false)
 		eq(data.Settings.Graphics, "Low")
 		eq(data.Settings.MusicVolume, 0.55)

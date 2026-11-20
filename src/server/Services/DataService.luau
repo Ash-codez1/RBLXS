@@ -47,6 +47,7 @@ type Entry = {
 	Releasing: boolean,
 	LockLost: boolean,
 	ReplicationQueued: boolean,
+	SentHistoryKey: string?,
 }
 
 local store: any = nil
@@ -184,13 +185,31 @@ end
 
 -- ===== Replication =====
 -- What the owning client is allowed to see. Server-only fields are stripped.
-function DataService.Snapshot(player: Player)
+local function historyKey(data): string
+	local history = data.LifeHistory or {}
+	local last = history[#history]
+	return #history .. ":" .. tostring(last and last.Id or 0)
+end
+
+--[[
+	When `omitHistory` is true, LifeHistory (up to ~75 KB) is left out and
+	`HistoryUnchanged = true` is set instead; the client keeps its copy.
+	This keeps the frequent pushes after every decision small.
+]]
+function DataService.Snapshot(player: Player, omitHistory: boolean?)
 	local entry = entries[player]
 	if not entry then
 		return nil
 	end
-	local snapshot = TableUtil.DeepCopy(entry.Data)
-	snapshot.ProcessedReceipts = nil
+	local snapshot = {}
+	for key, value in pairs(entry.Data) do
+		if key ~= "ProcessedReceipts" and not (omitHistory and key == "LifeHistory") then
+			snapshot[key] = TableUtil.DeepCopy(value)
+		end
+	end
+	if omitHistory then
+		snapshot.HistoryUnchanged = true
+	end
 	for _, slotId in ipairs(DataTemplate.SlotIds) do
 		local life = snapshot.Slots[slotId]
 		if type(life) == "table" then
@@ -209,7 +228,10 @@ local function replicate(player: Player)
 	task.delay(Config.ReplicationThrottle, function()
 		entry.ReplicationQueued = false
 		if entries[player] == entry and player.Parent then
-			Net.Fire("DataSnapshot", player, DataService.Snapshot(player))
+			local key = historyKey(entry.Data)
+			local omit = entry.SentHistoryKey == key
+			entry.SentHistoryKey = key
+			Net.Fire("DataSnapshot", player, DataService.Snapshot(player, omit))
 		end
 	end)
 end
@@ -340,6 +362,10 @@ function DataService.Start()
 		local data = DataService.WaitForData(player, 30)
 		if not data then
 			return false, "NotLoaded"
+		end
+		local entry = entries[player]
+		if entry then
+			entry.SentHistoryKey = historyKey(entry.Data)
 		end
 		return true, DataService.Snapshot(player)
 	end)

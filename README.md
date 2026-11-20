@@ -2,6 +2,8 @@
 
 > Every choice you make shapes your future.
 
+**▶ Try it:** download [`build/ChooseYourLife.rbxlx`](build/ChooseYourLife.rbxlx), open it in Roblox Studio and press Play. Full instructions (saving, phone/tablet emulation, multiplayer testing, live sync) are in **[TESTING.md](TESTING.md)**.
+
 Built in Luau as a [Rojo](https://rojo.space) project, so every script is a plain file you can sync into Roblox Studio (or create by hand; see §1).
 
 ## Build progress
@@ -19,7 +21,7 @@ Built in Luau as a [Rojo](https://rojo.space) project, so every script is a plai
 | 9 | Achievements, daily rewards, challenges, leaderboards | ⬜ |
 | 10–11 | Security hardening, testing, polish | ⬜ (core saving/security done in Phase 1) |
 
-**95 automated tests pass** (`lune run tests/run.luau`). They include:
+**97 automated tests pass** (`lune run tests/run.luau`). They include:
 - a simulation of 400 random lives from age 5 to 85;
 - a full life played through the real UI;
 - UI click-throughs on desktop, phone portrait, phone landscape and gamepad.
@@ -164,7 +166,7 @@ StarterPlayer
       ├─ Main                          LocalScript    (Main.client.luau)
       ├─ Controllers                   Folder
       │  ├─ AudioController, DataController, DecisionController, FinanceController,
-      │  │  FutureController, GraphicsController, HUDController, LifeHistoryController,
+      │  │  ControlsController, FutureController, GraphicsController, HUDController, LifeHistoryController,
       │  │  LifestyleController, LoadingController, MenuController, NotificationController,
       │  │  PeopleController, RevealController, SettingsController, SettingsMenu,
       │  │  UIController                                              ModuleScripts
@@ -176,7 +178,13 @@ At runtime the game also creates `ReplicatedStorage.Remotes` (server), the `CYL_
 
 File naming (Rojo): `X.server.luau` → **Script**, `X.client.luau` → **LocalScript**, `X.luau` → **ModuleScript**, and a folder containing `init.luau` → a **ModuleScript** with children.
 
-**Option A, Rojo (recommended):** install the Rojo plugin + CLI 7.x, run `rojo serve` in this folder, then in Studio go to Plugins → Rojo → Connect.
+**Option 0, just play it:** open `build/ChooseYourLife.rbxlx` in Studio (see [TESTING.md](TESTING.md)). It's rebuilt from `src/` with:
+
+```bash
+rojo build default.project.json -o build/ChooseYourLife.rbxlx
+```
+
+**Option A, Rojo (recommended for development):** install the Rojo plugin + CLI 7.x, run `rojo serve` in this folder, then in Studio go to Plugins → Rojo → Connect.
 **Option B, manual:** create every object above with exactly those names and classes, and paste in each file's contents.
 
 **Studio settings:** publish the place, then turn on Game Settings → Security → **Enable Studio Access to API Services** to test real saving. With it off, the game warns once and uses memory-only saving.

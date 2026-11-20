@@ -41,15 +41,25 @@ local playing = false
 local session = { Fast = false, Skip = false }
 
 -- ===== Layout =====
+-- Full-screen size in pixels. A disabled ScreenGui may not report its size
+-- yet, so fall back to the camera's viewport.
+local function screenSize(): Vector2
+	local absolute = gui.AbsoluteSize
+	if (not absolute or absolute.X < 2) and workspace and workspace.CurrentCamera then
+		absolute = workspace.CurrentCamera.ViewportSize
+	end
+	return absolute
+end
+
 local function layout()
 	local scale = UIController.GetScale()
 	uiScale.Scale = scale
-	local absolute = gui.AbsoluteSize
+	local absolute = screenSize()
 	root.Size = UDim2.fromOffset(math.floor(absolute.X / scale), math.floor(absolute.Y / scale))
 end
 
 local function size(): Vector2
-	local absolute = gui.AbsoluteSize
+	local absolute = screenSize()
 	local scale = UIController.GetScale()
 	return Vector2.new(absolute.X / scale, absolute.Y / scale)
 end

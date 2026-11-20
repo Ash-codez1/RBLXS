@@ -310,6 +310,29 @@ test("Data changes replicate to the owning client only (throttled)", function()
 	eq(remote.Fired[1].Args[1].Coins, 105)
 end)
 
+test("Life History is only re-sent when it changes", function()
+	local remote = server.remote("DataSnapshot")
+	table.clear(remote.Fired)
+	DataService.Update(alice, function()
+		-- no change needed: any update triggers a push
+	end)
+	task.wait(0.25)
+	local push = remote.Fired[#remote.Fired].Args[1]
+	eq(push.LifeHistory, nil, "unchanged history left out")
+	eq(push.HistoryUnchanged, true)
+	DataService.Update(alice, function(data)
+		table.insert(data.LifeHistory, { Id = 1, Name = "Test" })
+	end)
+	task.wait(0.25)
+	push = remote.Fired[#remote.Fired].Args[1]
+	eq(#push.LifeHistory, 1, "changed history included")
+	eq(push.HistoryUnchanged, nil)
+	DataService.Update(alice, function(data)
+		table.clear(data.LifeHistory)
+	end)
+	task.wait(0.25)
+end)
+
 test("StatService.Apply changes the active life and fires StatsChanged", function()
 	local fired = nil
 	StatService.StatsChanged:Once(function(_, applied, reason)

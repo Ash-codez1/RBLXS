@@ -27,6 +27,7 @@
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -91,7 +92,13 @@ local function filterName(name: string, player: Player): string?
 		return filtered:GetNonChatStringForBroadcastAsync()
 	end)
 	if not ok then
-		warn("[LifeService] Text filter failed: " .. tostring(result))
+		if RunService:IsStudio() then
+			-- Studio (especially unpublished places) may not offer filtering.
+			-- Allow the name so testing works; live servers always reject.
+			warn("[LifeService] Text filtering is unavailable in Studio, so the name is allowed for testing only: " .. tostring(result))
+			return name
+		end
+		warn("[LifeService] Text filter unavailable: " .. tostring(result))
 		return nil
 	end
 	if result ~= name then

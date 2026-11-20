@@ -3,3 +3,5 @@
 *.lock
 sourcemap.json
 *.zip
+# The ready-to-open test place is committed on purpose (see TESTING.md)
+!build/ChooseYourLife.rbxlx
