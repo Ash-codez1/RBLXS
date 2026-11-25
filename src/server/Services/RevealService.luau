@@ -16,6 +16,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Net = require(ReplicatedStorage:WaitForChild("Shared").Net)
+local Style = require(ReplicatedStorage:WaitForChild("Shared").Util.Style)
 
 local DataService = require(script.Parent.DataService)
 local SettingsService = require(script.Parent.SettingsService)
@@ -60,6 +61,7 @@ function RevealService.CardFor(viewer: Player, target: Player)
 		DisplayName = target.DisplayName or target.Name,
 		IsYou = relation == "Self",
 		IsFriend = relation == "Friend",
+		Style = Style.Public(data.Inventory.Equipped), -- cosmetics are for showing off
 	}
 	if SettingsService.CanView(target, "ShareHistory", relation) then
 		local endings = {}

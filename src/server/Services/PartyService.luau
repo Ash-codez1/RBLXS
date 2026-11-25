@@ -38,11 +38,14 @@ local Futures = require(Shared.Util.Futures)
 local TableUtil = require(Shared.Util.TableUtil)
 local LifeStages = require(Shared.Data.LifeStages)
 local Careers = require(Shared.Data.Careers)
+local Style = require(Shared.Util.Style)
 
 local Server = script.Parent.Parent
 local Conditions = require(Server.Lib.Conditions)
 local Consequences = require(Server.Lib.Consequences)
 local Scenarios = require(Server.Content.Scenarios)
+local CoinRewards = require(Server.Lib.CoinRewards)
+local Config = require(Shared.Config)
 
 local DataService = require(script.Parent.DataService)
 local RevealService = require(script.Parent.RevealService)
@@ -104,6 +107,10 @@ end
 
 local function memberInfo(party, player: Player)
 	local info = { UserId = player.UserId, DisplayName = displayName(player), IsLeader = party.Leader == player }
+	local data = DataService.Get(player)
+	if data then
+		info.Style = Style.Public(data.Inventory.Equipped)
+	end
 	local life = DataService.GetActiveLife(player)
 	if life then
 		info.LifeName = life.Name
@@ -546,7 +553,9 @@ function resolveEvent(party)
 			TableUtil.TrimArray(life.Shared, PartyService.MaxSharedMoments)
 			Consequences.SyncWealth(life)
 			summary.Applied.Wealth = nil
+			local coins = CoinRewards.Grant(d, Config.GroupEventCoins)
 			result = {
+				Coins = coins,
 				EventId = event.Id,
 				Icon = scenario.Icon,
 				Title = scenario.Title,

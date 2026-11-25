@@ -35,6 +35,11 @@ Config.StartingMoney = 0 -- in-life money, resets every new life
 Config.EventChance = 0.28 -- chance of a random life event after each decision
 Config.TwistChance = 0.22 -- chance of a twist at each stage's Life Reveal
 
+-- ===== Coins (cosmetic currency) earned by playing =====
+Config.StageCoins = 15 -- for every completed life stage
+Config.GroupEventCoins = 5 -- taking part in a group decision
+Config.CityEventCoins = 5 -- joining a city event
+
 -- ===== Multiplayer =====
 Config.CityEventInterval = 480 -- seconds between server-wide city events (90 in Studio)
 Config.CityEventJoinSeconds = 45

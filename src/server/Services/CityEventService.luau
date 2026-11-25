@@ -23,6 +23,7 @@ local Server = script.Parent.Parent
 local Conditions = require(Server.Lib.Conditions)
 local Consequences = require(Server.Lib.Consequences)
 local Scenarios = require(Server.Content.Scenarios)
+local CoinRewards = require(Server.Lib.CoinRewards)
 
 local DataService = require(script.Parent.DataService)
 
@@ -150,6 +151,7 @@ function CityEventService.Respond(player: Player, eventId: any, join: any)
 		local summary = Consequences.Apply(life, event.Def.Effects, lifeRng, true, event.OutcomeIndex)
 		summary.Applied.Wealth = nil
 		result = {
+			Coins = CoinRewards.Grant(d, Config.CityEventCoins),
 			Joined = true,
 			Icon = event.Def.Icon,
 			Title = event.Def.Title,

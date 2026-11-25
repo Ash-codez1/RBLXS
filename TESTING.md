@@ -15,15 +15,16 @@ You need a **Windows or Mac computer** with **Roblox Studio** (free). Studio doe
 
 **What you should see:**
 - **Output window** (View → Output):
-  - `[Server] CHOOSE YOUR LIFE started with 7 services` and no red errors.
+  - `[Server] CHOOSE YOUR LIFE started with 10 services` and no red errors.
   - A yellow line saying DataStores are unavailable and the in-memory store is being used. That's expected: an unpublished place can't save, so progress resets each time you press Stop.
   - If filtering isn't available in Studio, a yellow line about text filtering. That's also expected and only happens in Studio.
 - **On screen:** a loading screen, then the main menu. **Play** → choose a name → decision cards.
 
 **Things to try:**
 - Play through Childhood to see your first **Life Reveal**.
-- The HUD buttons: 🔮 Future, 👥 People, 🎯 Lifestyle, 💰 Money, 📊 Stats.
+- The HUD buttons: 🔮 Future, 🤝 Circle, 👥 People, 🎯 Lifestyle, 💰 Money, 📊 Stats.
 - Settings, save slots, and Life History (after you finish a life).
+- **🛍️ Shop** and **🎒 My Items** (main menu): you start with 100 Coins, enough for a baseball cap. Watch your look change on the menu card, in the HUD and on your character's name tag.
 
 > Tip: to rush through a life, tap each card twice (select + confirm) and press **Continue**. Settings → **Reduce animations** shortens the cinematics.
 
@@ -32,6 +33,19 @@ You need a **Windows or Mac computer** with **Roblox Studio** (free). Studio doe
 1. **File → Publish to Roblox** (create a new experience; it can stay private).
 2. **Home → Game Settings → Security →** turn on **Enable Studio Access to API Services** → Save.
 3. Press Play again. The "in-memory" warning disappears and your lives, coins and settings persist.
+
+### Test the shop and Robux purchases
+
+**Coins and cosmetics** work straight away: finish stages (+15 Coins each) and lives, then buy, equip and remove items. Coins only save between tests if saving is on (see above).
+
+**Robux purchases** need your own passes and products first (README §3 explains how):
+1. Publish the place, then create the **VIP** and **2× Coins** passes and the three coin packs under Creator Dashboard → your experience → **Monetization**.
+2. Paste each id into `ReplicatedStorage › Shared › Data › Monetisation`, then press Play.
+3. Shop → **🪙 Get Coins**. Studio shows Roblox's purchase window as a **test purchase**, so no Robux are charged.
+   - **Coin pack:** the Coins arrive once the purchase finishes, with a "Thank you!" notice.
+   - **VIP:** the VIP items become free to claim (⭐ Claim free with VIP).
+   - **2× Coins:** the next stage reveal shows "(2× Coins)".
+4. Press Stop, then Play again. Roblox reports that you don't really own a pass you test-bought, so it's removed when you rejoin. That's the same check that stops anyone faking a pass.
 
 ### Test phones, tablets and consoles
 

@@ -16,15 +16,17 @@ Built in Luau as a [Rojo](https://rojo.space) project, so every script is a plai
 | 4 | People & bonds, People/Lifestyle/Money panels, investments, loans & mortgages, a scenario for every career | ✅ Done |
 | 5 | **Life Reveal**: calibrated predictions, twists, stage & final cinematics, ending titles, Life History, comparisons | ✅ Done |
 | 6 | **Multiplayer**: Life Circles, invites, group decisions with voting, group Life Reveals, city events, joining friends | ✅ Done |
-| 7 | Shop, currency, inventory, monetisation | ⏳ Next |
-| 8 | World and environment, music and sound | ⬜ |
+| 7 | **Shop & monetisation**: Coins, 81 cosmetics, previews, My Items, look shown in-game, Robux coin packs & passes | ✅ Done |
+| 8 | World and environment, music and sound | ⏳ Next |
 | 9 | Achievements, daily rewards, challenges, leaderboards | ⬜ |
 | 10–11 | Security hardening, testing, polish | ⬜ (core saving/security done in Phase 1) |
 
-**123 automated tests pass** (`lune run tests/run.luau`). They include:
+**151 automated tests pass** (`lune run tests/run.luau`). They include:
 - a simulation of 400 random lives from age 5 to 85;
 - a full life played through the real UI;
-- UI click-throughs on desktop, phone portrait, phone landscape and gamepad.
+- UI click-throughs on desktop, phone portrait, phone landscape and gamepad;
+- two players in one server (Life Circles, group votes, city events);
+- the shop and Robux purchases (receipts, passes, failed saves, spoofing attempts).
 
 Nothing has been play-tested inside Roblox Studio yet; see §4.
 
@@ -44,6 +46,35 @@ Every player always has their **own independent life**. Multiplayer adds things 
 - **🔮 Group Life Reveal:** everyone watches each member's predicted futures, then a **"most likely to…"** board. Privacy settings still apply, and circle members count as friends.
 - **⚖️ Compare:** side-by-side futures, stats, net worth and **homes & cars** with anyone whose privacy allows it.
 - **🎪 City events:** every 8 minutes the whole server is invited to something (festival, marathon, free concert, market frenzy…). Join or skip; joiners share one city-wide outcome, applied to their own lives.
+
+### Shop, Coins and fair monetisation (Phase 7)
+
+Everything you can buy is **cosmetic**. Nothing changes your choices, stats, money or outcomes, so there's no pay-to-win.
+
+- **🪙 Coins** are earned by playing, and they carry over between lives:
+  - +15 for each finished life stage;
+  - a payout for each completed life (40 + your overall life score + 5 per future that came true + an ending bonus);
+  - +5 for taking part in a group decision or city event.
+- **🛍️ Shop** (main menu) has 81 items in 10 categories: clothing, hairstyles, accessories, houses, apartments, cars, pets, furniture, lifestyle (titles, name colours, menu themes) and effects (Life Reveal effects, character auras).
+  - Search and category tabs; cards show the rarity, price or Owned/Equipped.
+  - Each item **previews on your look** before you buy, and every purchase asks for confirmation.
+- **🎒 My Items** (main menu) shows what's equipped in every slot (Change or Remove) and everything you own.
+- **Where your look shows up:**
+  - **Menu card and HUD:** your face, outfit, accessory and pet, plus your name colour and title.
+  - **Your character:** a name tag with your title and name colour, which every player sees, and an aura if you've equipped one.
+  - **Other players' screens:** Life Circles, Compare and Group Reveals.
+  - **Your Life Reveal:** your home, car and pet appear in your future scenes, and an equipped Reveal effect rains down.
+  - **Menus:** an equipped theme recolours the background.
+- **Robux (optional, through Roblox's own purchase prompts):**
+  - **Coin packs** (developer products): 500, 1,500 or 4,000 Coins.
+  - **⭐ VIP** (game pass): 6 exclusive cosmetics for free.
+  - **🪙 2× Coins** (game pass): doubles the Coins you earn by playing. Bought Coins are never doubled.
+  - Prices are read from Roblox. Until you paste your own ids into `Shared/Data/Monetisation` (see §3), no Robux buttons appear at all.
+- **Security:**
+  - The server checks every shop purchase: the item exists, you have enough Coins, you don't already own it, and VIP items need VIP. You can only equip items you own, and on load anything unknown or not owned is removed from your loadout.
+  - Coin packs are granted in `ProcessReceipt`, at most once per receipt. Roblox is told the purchase succeeded only after your profile has saved; otherwise Roblox retries.
+  - Game passes are checked with Roblox every time you join. A pass bought mid-game works straight away. Roblox caches ownership, so it can still report a new pass as "not owned" until you rejoin. The pass is then re-checked on your next join, and removed if Roblox says you don't own it.
+  - No remote can grant Coins or passes.
 
 ### LIFE REVEAL (Phase 5): the signature feature
 
@@ -91,7 +122,7 @@ It ends by asking *"What if you had chosen differently?"*, with **Live Again**, 
 
 **Life History** (menu → 📜). Your last 30 lives, each with a full detail view: replay its final reveal, or **compare two lives side by side**. Completed save slots offer "View Final Reveal".
 
-**🔮 Future panel.** Live odds for every future, how your predictions changed at each reveal, and **compare with players in this server**. Comparisons respect privacy settings: *Everyone / Friends / Nobody* for reveals, exact stats and past lives, using Roblox friendships. Group reveal sessions come with multiplayer in Phase 6.
+**🔮 Future panel.** Live odds for every future, how your predictions changed at each reveal, and **compare with players in this server**. Comparisons respect privacy settings: *Everyone / Friends / Nobody* for reveals, exact stats and past lives, using Roblox friendships. Group reveals for Life Circles are described under *Playing with friends*.
 
 ### People, lifestyle and money (Phase 4)
 
@@ -147,10 +178,12 @@ ReplicatedStorage
    ├─ Config                           ModuleScript   constants, credits, loading tips
    ├─ Data                             Folder
    │  ├─ Assets                        ModuleScript   homes/cars you can buy in a life
+   │  ├─ Catalog                       ModuleScript   81 shop cosmetics, slots, rarities, search
    │  ├─ Lifestyle                     ModuleScript   lifestyle focus options
    │  ├─ Careers                       ModuleScript   21 careers, salaries, level titles, education
    │  ├─ DataTemplate                  ModuleScript   save schema, new life, migrations
    │  ├─ LifeStages                    ModuleScript   6 stages, ages, decisions per stage
+   │  ├─ Monetisation                  ModuleScript   game pass + developer product ids (paste yours, see §3)
    │  ├─ NamePool                      ModuleScript   names for the "Random" button
    │  ├─ SoundIds                      ModuleScript   audio asset ids (fill in, see §3)
    │  ├─ StatDefinitions               ModuleScript   the 8 stats
@@ -159,7 +192,7 @@ ReplicatedStorage
    │  └─ RemoteDefinitions             ModuleScript   every remote + rate limits
    └─ Util                             Folder
       ├─ Budget, Endings, Format, Futures, People,
-      │  Signal, StatMath, TableUtil                          ModuleScripts
+      │  Signal, StatMath, Style, TableUtil                   ModuleScripts
 
 ServerScriptService
 └─ Server                              Folder
@@ -174,11 +207,11 @@ ServerScriptService
    │     │  Adult, MiddleAge, Retirement  ModuleScripts  one per life stage
    │     └─ LifeAndWork                ModuleScript   multi-stage career & relationship scenarios
    ├─ Lib                              Folder
-   │  ├─ Actions, Conditions, Consequences, MockDataStore, RandomEvents,
+   │  ├─ Actions, CoinRewards, Conditions, Consequences, MockDataStore, RandomEvents,
    │  │  Reveal, ScenarioPicker, SessionLock, Validate, Yearly   ModuleScripts
    └─ Services                         Folder
-      ├─ CityEventService, DataService, LifeService, PartyService,
-      │  RevealService, SettingsService, StatService                          ModuleScripts
+      ├─ CityEventService, CosmeticsService, DataService, LifeService, PartyService,
+      │  RevealService, SettingsService, ShopService, StatService, StoreService  ModuleScripts
 
 StarterPlayer
 └─ StarterPlayerScripts
@@ -187,11 +220,12 @@ StarterPlayer
       ├─ Controllers                   Folder
       │  ├─ AudioController, ControlsController, DataController, DecisionController,
       │  │  FinanceController, FriendsController, FutureController, GraphicsController,
-      │  │  HUDController, LifeHistoryController, LifestyleController, LoadingController,
-      │  │  MenuController, NotificationController, PartyController, PeopleController,
-      │  │  RevealController, SettingsController, SettingsMenu, UIController   ModuleScripts
+      │  │  HUDController, InventoryController, LifeHistoryController, LifestyleController,
+      │  │  LoadingController, MenuController, NotificationController, PartyController,
+      │  │  PeopleController, RevealController, SettingsController, SettingsMenu,
+      │  │  ShopController, StyleController, UIController                ModuleScripts
       └─ UILib                         Folder
-         ├─ Anim, Components, Create, Layout, Theme                    ModuleScripts
+         ├─ Anim, Avatar, Components, Create, Layout, Theme            ModuleScripts
 ```
 
 At runtime the game also creates `ReplicatedStorage.Remotes` (server), the `CYL_*` ScreenGuis in PlayerGui and the `CYL_Music` / `CYL_SFX` SoundGroups (client). **Don't create those yourself.** All UI is generated by code; there are no hand-made GUIs.
@@ -268,6 +302,13 @@ rojo build default.project.json -o build/ChooseYourLife.rbxlx
 
 - **Sounds and music:** paste asset ids you have rights to (Toolbox → Audio) into `Shared/Data/SoundIds`. Empty ids are skipped, so the game is silent until then. The volume settings already control them.
 - **Credits:** edit `Config.Credits`.
+- **Robux products (optional):** the game works fully without them, using Coins earned by playing.
+  1. Publish the place (File → Publish to Roblox).
+  2. In the [Creator Dashboard](https://create.roblox.com/dashboard/creations), open the experience → **Monetization**:
+     - **Passes:** create **VIP** and **2× Coins**, and set each one's price and put it on sale.
+     - **Developer Products:** create the three coin packs (500, 1,500 and 4,000 Coins) with prices.
+  3. Copy each id into `ReplicatedStorage › Shared › Data › Monetisation` (`Id = 0` → your id).
+  The **Get Coins** button and the VIP offers appear once at least one id is set. Names shown in-game come from that file, and prices come from Roblox.
 
 ---
 
@@ -281,9 +322,9 @@ lune run tests/run.luau
 selene src
 ```
 
-Tests run the **real** `src/` files outside Roblox using [Lune](https://lune-org.github.io) and a fake Roblox API (`tests/harness.luau`). The client tests boot the real client against a real server harness, with remotes bridged and data deep-copied. They then click through the loading screen, menu, name entry, the full childhood, the stats panel, settings, credits, save slots and delete confirmation. This runs at desktop, phone-portrait, phone-landscape (including rotating mid-decision) and gamepad layouts, and the tests fail on any script error.
+Tests run the **real** `src/` files outside Roblox using [Lune](https://lune-org.github.io) and a fake Roblox API (`tests/harness.luau`). The client tests boot the real client against a real server harness, with remotes bridged and data deep-copied. They then click through the loading screen, menu, name entry, a whole life, the stats panel, settings, credits, save slots and delete confirmation, the shop (search, tabs, previews, buying, VIP, coin packs) and My Items. This runs at desktop, phone-portrait, phone-landscape (including rotating mid-decision) and gamepad layouts, and the tests fail on any script error.
 
 **What the harness can't check:** how things actually look, fonts, real tween timing, and real DataStore and text-filter behaviour. Please play-test in Studio. You should see:
-- Output shows `[Server] CHOOSE YOUR LIFE started with 4 services` and no red errors.
+- Output shows `[Server] CHOOSE YOUR LIFE started with 10 services` and no red errors.
 - The loading screen leads to the main menu. **Play** leads to name entry, then to decision cards.
 - Use Studio's **device emulator** (Test → Device) to check a phone and a tablet.

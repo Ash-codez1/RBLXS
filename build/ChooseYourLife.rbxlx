@@ -47,6 +47,11 @@ Config.StartingMoney = 0 -- in-life money, resets every new life
 Config.EventChance = 0.28 -- chance of a random life event after each decision
 Config.TwistChance = 0.22 -- chance of a twist at each stage's Life Reveal
 
+-- ===== Coins (cosmetic currency) earned by playing =====
+Config.StageCoins = 15 -- for every completed life stage
+Config.GroupEventCoins = 5 -- taking part in a group decision
+Config.CityEventCoins = 5 -- joining a city event
+
 -- ===== Multiplayer =====
 Config.CityEventInterval = 480 -- seconds between server-wide city events (90 in Studio)
 Config.CityEventJoinSeconds = 45
@@ -197,6 +202,259 @@ return Careers
         </Item>
         <Item class="ModuleScript" referent="6">
           <Properties>
+            <string name="Name">Catalog</string>
+            <string name="Source"><![CDATA[--[[
+	Catalog  (ReplicatedStorage.Shared.Data.Catalog)
+	Every cosmetic item in the shop. Bought with Coins (earned by playing, or
+	coin packs bought with Robux). ALL ITEMS ARE COSMETIC: they change how
+	your life looks (avatar, home, car, pet, name, title, themes, effects)
+	and never its choices, stats or money. No pay-to-win.
+
+	Item = { Id, Name, Category, Slot, Icon, Rarity, Price, Description, VipOnly?, ...style }
+	One item can be equipped per Slot. VipOnly items are free with the VIP
+	game pass (Data/Monetisation) and can't be bought with Coins.
+
+	Style fields by slot:
+	  Hair: Face (emoji used as your avatar's face) · NameColor: Color (hex)
+	  Title: Text · Backdrop: Colors { hex, hex } · RevealEffect: Glyphs { emoji... }
+	  Aura: Aura { Kind = "Sparkles"|"Fire"|"Smoke", Color, Secondary? }
+	  Other slots use Icon.
+]]
+
+local Catalog = {}
+
+Catalog.Categories = {
+	{ Id = "Clothing", Name = "Clothing", Icon = "👕" },
+	{ Id = "Hairstyles", Name = "Hairstyles", Icon = "💇" },
+	{ Id = "Accessories", Name = "Accessories", Icon = "🎩" },
+	{ Id = "Houses", Name = "Houses", Icon = "🏡" },
+	{ Id = "Apartments", Name = "Apartments", Icon = "🏢" },
+	{ Id = "Cars", Name = "Cars", Icon = "🚗" },
+	{ Id = "Pets", Name = "Pets", Icon = "🐶" },
+	{ Id = "Furniture", Name = "Furniture", Icon = "🛋️" },
+	{ Id = "Lifestyle", Name = "Lifestyle", Icon = "✨" },
+	{ Id = "Effects", Name = "Effects", Icon = "🎆" },
+}
+
+Catalog.Slots = {
+	Outfit = { Name = "Outfit", Category = "Clothing" },
+	Hair = { Name = "Look", Category = "Hairstyles" },
+	Accessory = { Name = "Accessory", Category = "Accessories" },
+	House = { Name = "House style", Category = "Houses" },
+	Apartment = { Name = "Apartment style", Category = "Apartments" },
+	Car = { Name = "Car", Category = "Cars" },
+	Pet = { Name = "Pet", Category = "Pets" },
+	Furniture = { Name = "Centrepiece", Category = "Furniture" },
+	Title = { Name = "Title", Category = "Lifestyle" },
+	NameColor = { Name = "Name colour", Category = "Lifestyle" },
+	Backdrop = { Name = "Theme", Category = "Lifestyle" },
+	RevealEffect = { Name = "Reveal effect", Category = "Effects" },
+	Aura = { Name = "Aura", Category = "Effects" },
+}
+Catalog.SlotOrder = { "Hair", "Outfit", "Accessory", "Pet", "House", "Apartment", "Car", "Furniture", "Title", "NameColor", "Backdrop", "RevealEffect", "Aura" }
+
+Catalog.Rarities = {
+	Common = { Color = "#ACB1D6", Order = 1 },
+	Rare = { Color = "#6C8CFF", Order = 2 },
+	Epic = { Color = "#B48CFF", Order = 3 },
+	Legendary = { Color = "#FFD45A", Order = 4 },
+	VIP = { Color = "#FF5A8C", Order = 5 },
+}
+
+local function item(t)
+	return t
+end
+
+Catalog.Items = {
+	-- ===== Clothing =====
+	item({ Id = "Outfit_Tee", Name = "Casual Tee", Category = "Clothing", Slot = "Outfit", Icon = "👕", Rarity = "Common", Price = 120, Description = "Simple, comfy, timeless." }),
+	item({ Id = "Outfit_Denim", Name = "Denim Jacket", Category = "Clothing", Slot = "Outfit", Icon = "🧥", Rarity = "Common", Price = 150, Description = "Effortlessly cool." }),
+	item({ Id = "Outfit_Sports", Name = "Sports Kit", Category = "Clothing", Slot = "Outfit", Icon = "🎽", Rarity = "Common", Price = 180, Description = "Always ready for kick-off." }),
+	item({ Id = "Outfit_Suit", Name = "Sharp Suit", Category = "Clothing", Slot = "Outfit", Icon = "👔", Rarity = "Rare", Price = 400, Description = "Dress for the job you want." }),
+	item({ Id = "Outfit_Dress", Name = "Party Dress", Category = "Clothing", Slot = "Outfit", Icon = "👗", Rarity = "Rare", Price = 400, Description = "Made for dancing." }),
+	item({ Id = "Outfit_LabCoat", Name = "Lab Coat", Category = "Clothing", Slot = "Outfit", Icon = "🥼", Rarity = "Rare", Price = 450, Description = "For brilliant minds." }),
+	item({ Id = "Outfit_Kimono", Name = "Silk Kimono", Category = "Clothing", Slot = "Outfit", Icon = "👘", Rarity = "Epic", Price = 900, Description = "Elegant and graceful." }),
+	item({ Id = "Outfit_Golden", Name = "Golden Robes", Category = "Clothing", Slot = "Outfit", Icon = "🌟", Rarity = "VIP", Price = 0, VipOnly = true, Description = "VIP exclusive. Shine everywhere you go." }),
+
+	-- ===== Hairstyles & looks =====
+	item({ Id = "Hair_Bald", Name = "Shaved Head", Category = "Hairstyles", Slot = "Hair", Icon = "🧑‍🦲", Face = "🧑‍🦲", Rarity = "Common", Price = 100, Description = "Low maintenance, high confidence." }),
+	item({ Id = "Hair_Curly", Name = "Curly Hair", Category = "Hairstyles", Slot = "Hair", Icon = "🧑‍🦱", Face = "🧑‍🦱", Rarity = "Common", Price = 120, Description = "Bouncy curls." }),
+	item({ Id = "Hair_Red", Name = "Red Hair", Category = "Hairstyles", Slot = "Hair", Icon = "🧑‍🦰", Face = "🧑‍🦰", Rarity = "Common", Price = 150, Description = "Fiery and bold." }),
+	item({ Id = "Hair_Blond", Name = "Blond Hair", Category = "Hairstyles", Slot = "Hair", Icon = "👱", Face = "👱", Rarity = "Common", Price = 150, Description = "Sunny and bright." }),
+	item({ Id = "Hair_Silver", Name = "Silver Fox", Category = "Hairstyles", Slot = "Hair", Icon = "🧑‍🦳", Face = "🧑‍🦳", Rarity = "Rare", Price = 350, Description = "Distinguished at any age." }),
+	item({ Id = "Hair_Prince", Name = "Prince Look", Category = "Hairstyles", Slot = "Hair", Icon = "🤴", Face = "🤴", Rarity = "Epic", Price = 1000, Description = "Royalty, obviously." }),
+	item({ Id = "Hair_Princess", Name = "Princess Look", Category = "Hairstyles", Slot = "Hair", Icon = "👸", Face = "👸", Rarity = "Epic", Price = 1000, Description = "Royalty, obviously." }),
+	item({ Id = "Hair_Wizard", Name = "Wizard Look", Category = "Hairstyles", Slot = "Hair", Icon = "🧙", Face = "🧙", Rarity = "Epic", Price = 1200, Description = "A little bit magical." }),
+	item({ Id = "Hair_Fairy", Name = "Fairy Look", Category = "Hairstyles", Slot = "Hair", Icon = "🧚", Face = "🧚", Rarity = "Epic", Price = 1200, Description = "Sprinkled with stardust." }),
+	item({ Id = "Hair_Hero", Name = "Superhero Look", Category = "Hairstyles", Slot = "Hair", Icon = "🦸", Face = "🦸", Rarity = "Legendary", Price = 2000, Description = "Saving the day, every day." }),
+
+	-- ===== Accessories =====
+	item({ Id = "Acc_Cap", Name = "Baseball Cap", Category = "Accessories", Slot = "Accessory", Icon = "🧢", Rarity = "Common", Price = 100, Description = "Backwards, of course." }),
+	item({ Id = "Acc_Shades", Name = "Cool Shades", Category = "Accessories", Slot = "Accessory", Icon = "🕶️", Rarity = "Common", Price = 150, Description = "The future's so bright." }),
+	item({ Id = "Acc_Bow", Name = "Big Bow", Category = "Accessories", Slot = "Accessory", Icon = "🎀", Rarity = "Common", Price = 150, Description = "Adorable." }),
+	item({ Id = "Acc_Headphones", Name = "Headphones", Category = "Accessories", Slot = "Accessory", Icon = "🎧", Rarity = "Rare", Price = 350, Description = "Your life has a soundtrack." }),
+	item({ Id = "Acc_TopHat", Name = "Top Hat", Category = "Accessories", Slot = "Accessory", Icon = "🎩", Rarity = "Rare", Price = 400, Description = "Fancy." }),
+	item({ Id = "Acc_Grad", Name = "Graduation Cap", Category = "Accessories", Slot = "Accessory", Icon = "🎓", Rarity = "Rare", Price = 450, Description = "Top of the class (in spirit)." }),
+	item({ Id = "Acc_Clover", Name = "Lucky Clover", Category = "Accessories", Slot = "Accessory", Icon = "🍀", Rarity = "Epic", Price = 800, Description = "Feels lucky. (It's just for show!)" }),
+	item({ Id = "Acc_Crown", Name = "Crown", Category = "Accessories", Slot = "Accessory", Icon = "👑", Rarity = "VIP", Price = 0, VipOnly = true, Description = "VIP exclusive." }),
+
+	-- ===== Houses (style of your House / Mansion and in reveal scenes) =====
+	item({ Id = "House_Cottage", Name = "Country Cottage", Category = "Houses", Slot = "House", Icon = "🏡", Rarity = "Common", Price = 200, Description = "Roses round the door." }),
+	item({ Id = "House_Cabin", Name = "Log Cabin", Category = "Houses", Slot = "House", Icon = "🛖", Rarity = "Rare", Price = 500, Description = "Cosy, by the lake." }),
+	item({ Id = "House_Beach", Name = "Beach Villa", Category = "Houses", Slot = "House", Icon = "🏖️", Rarity = "Epic", Price = 1200, Description = "Waves outside the window." }),
+	item({ Id = "House_Japanese", Name = "Japanese Villa", Category = "Houses", Slot = "House", Icon = "🏯", Rarity = "Epic", Price = 1500, Description = "Gardens and calm." }),
+	item({ Id = "House_Castle", Name = "Castle", Category = "Houses", Slot = "House", Icon = "🏰", Rarity = "Legendary", Price = 2500, Description = "Every life deserves a turret." }),
+	item({ Id = "House_Manor", Name = "Grand Manor", Category = "Houses", Slot = "House", Icon = "🏛️", Rarity = "VIP", Price = 0, VipOnly = true, Description = "VIP exclusive." }),
+
+	-- ===== Apartments (style of your Apartment) =====
+	item({ Id = "Apt_Loft", Name = "City Loft", Category = "Apartments", Slot = "Apartment", Icon = "🏢", Rarity = "Common", Price = 200, Description = "Exposed brick, big windows." }),
+	item({ Id = "Apt_Studio", Name = "Downtown Studio", Category = "Apartments", Slot = "Apartment", Icon = "🏙️", Rarity = "Rare", Price = 450, Description = "Right in the middle of everything." }),
+	item({ Id = "Apt_Penthouse", Name = "Sky Penthouse", Category = "Apartments", Slot = "Apartment", Icon = "🌆", Rarity = "Epic", Price = 1300, Description = "The whole city at your feet." }),
+	item({ Id = "Apt_Tower", Name = "Tower Suite", Category = "Apartments", Slot = "Apartment", Icon = "🗼", Rarity = "Legendary", Price = 2200, Description = "The highest address in town." }),
+
+	-- ===== Cars =====
+	item({ Id = "Car_Hatch", Name = "Hatchback", Category = "Cars", Slot = "Car", Icon = "🚗", Rarity = "Common", Price = 150, Description = "Reliable and red." }),
+	item({ Id = "Car_SUV", Name = "SUV", Category = "Cars", Slot = "Car", Icon = "🚙", Rarity = "Common", Price = 200, Description = "Room for everyone." }),
+	item({ Id = "Car_Pickup", Name = "Pickup Truck", Category = "Cars", Slot = "Car", Icon = "🛻", Rarity = "Rare", Price = 400, Description = "Built tough." }),
+	item({ Id = "Car_Camper", Name = "Camper Van", Category = "Cars", Slot = "Car", Icon = "🚐", Rarity = "Rare", Price = 450, Description = "Home is wherever you park it." }),
+	item({ Id = "Car_Moto", Name = "Motorbike", Category = "Cars", Slot = "Car", Icon = "🏍️", Rarity = "Rare", Price = 500, Description = "Wind in your hair." }),
+	item({ Id = "Car_Vintage", Name = "Vintage Ride", Category = "Cars", Slot = "Car", Icon = "🚘", Rarity = "Epic", Price = 900, Description = "They don't make them like this any more." }),
+	item({ Id = "Car_Super", Name = "Supercar", Category = "Cars", Slot = "Car", Icon = "🏎️", Rarity = "Legendary", Price = 2500, Description = "Zero to sixty in a blink." }),
+
+	-- ===== Pets (a companion shown with your avatar) =====
+	item({ Id = "Pet_Bunny", Name = "Bunny", Category = "Pets", Slot = "Pet", Icon = "🐰", Rarity = "Common", Price = 180, Description = "Hop hop." }),
+	item({ Id = "Pet_Dog", Name = "Puppy", Category = "Pets", Slot = "Pet", Icon = "🐶", Rarity = "Common", Price = 200, Description = "Your biggest fan." }),
+	item({ Id = "Pet_Cat", Name = "Kitten", Category = "Pets", Slot = "Pet", Icon = "🐱", Rarity = "Common", Price = 200, Description = "Judges you lovingly." }),
+	item({ Id = "Pet_Parrot", Name = "Parrot", Category = "Pets", Slot = "Pet", Icon = "🦜", Rarity = "Rare", Price = 450, Description = "Repeats everything. Everything." }),
+	item({ Id = "Pet_Fox", Name = "Fox", Category = "Pets", Slot = "Pet", Icon = "🦊", Rarity = "Rare", Price = 500, Description = "Clever and curious." }),
+	item({ Id = "Pet_Panda", Name = "Panda", Category = "Pets", Slot = "Pet", Icon = "🐼", Rarity = "Epic", Price = 1100, Description = "Mostly eats and naps." }),
+	item({ Id = "Pet_Dragon", Name = "Baby Dragon", Category = "Pets", Slot = "Pet", Icon = "🐉", Rarity = "Legendary", Price = 3000, Description = "Warm cuddles. Very warm." }),
+	item({ Id = "Pet_Unicorn", Name = "Unicorn", Category = "Pets", Slot = "Pet", Icon = "🦄", Rarity = "VIP", Price = 0, VipOnly = true, Description = "VIP exclusive." }),
+
+	-- ===== Furniture (the centrepiece of your home showcase) =====
+	item({ Id = "Furn_Plant", Name = "Big Plant", Category = "Furniture", Slot = "Furniture", Icon = "🪴", Rarity = "Common", Price = 100, Description = "Brings life to any room." }),
+	item({ Id = "Furn_Sofa", Name = "Comfy Sofa", Category = "Furniture", Slot = "Furniture", Icon = "🛋️", Rarity = "Common", Price = 120, Description = "You'll never want to get up." }),
+	item({ Id = "Furn_Art", Name = "Masterpiece Painting", Category = "Furniture", Slot = "Furniture", Icon = "🖼️", Rarity = "Rare", Price = 400, Description = "Very cultured." }),
+	item({ Id = "Furn_Telescope", Name = "Telescope", Category = "Furniture", Slot = "Furniture", Icon = "🔭", Rarity = "Rare", Price = 450, Description = "For stargazing nights." }),
+	item({ Id = "Furn_Arcade", Name = "Arcade Machine", Category = "Furniture", Slot = "Furniture", Icon = "🕹️", Rarity = "Rare", Price = 500, Description = "High score: you." }),
+	item({ Id = "Furn_Piano", Name = "Grand Piano", Category = "Furniture", Slot = "Furniture", Icon = "🎹", Rarity = "Epic", Price = 900, Description = "Fills the house with music." }),
+	item({ Id = "Furn_Fountain", Name = "Fountain", Category = "Furniture", Slot = "Furniture", Icon = "⛲", Rarity = "Legendary", Price = 1800, Description = "For the garden. Obviously." }),
+
+	-- ===== Lifestyle upgrades: titles, name colours, themes =====
+	item({ Id = "Title_Dreamer", Name = "Title: The Dreamer", Category = "Lifestyle", Slot = "Title", Icon = "💭", Text = "The Dreamer", Rarity = "Common", Price = 150, Description = "Shown under your name to other players." }),
+	item({ Id = "Title_Kind", Name = "Title: Kind Soul", Category = "Lifestyle", Slot = "Title", Icon = "💛", Text = "Kind Soul", Rarity = "Common", Price = 150, Description = "Shown under your name to other players." }),
+	item({ Id = "Title_Boss", Name = "Title: The Boss", Category = "Lifestyle", Slot = "Title", Icon = "💼", Text = "The Boss", Rarity = "Rare", Price = 400, Description = "Shown under your name to other players." }),
+	item({ Id = "Title_Explorer", Name = "Title: World Explorer", Category = "Lifestyle", Slot = "Title", Icon = "🧭", Text = "World Explorer", Rarity = "Rare", Price = 400, Description = "Shown under your name to other players." }),
+	item({ Id = "Title_Legend", Name = "Title: Living Legend", Category = "Lifestyle", Slot = "Title", Icon = "🌟", Text = "Living Legend", Rarity = "Epic", Price = 1000, Description = "Shown under your name to other players." }),
+	item({ Id = "Title_VIP", Name = "Title: VIP", Category = "Lifestyle", Slot = "Title", Icon = "⭐", Text = "VIP", Rarity = "VIP", Price = 0, VipOnly = true, Description = "VIP exclusive title." }),
+	item({ Id = "Name_Sky", Name = "Sky Blue Name", Category = "Lifestyle", Slot = "NameColor", Icon = "🔵", Color = "#6CA0FF", Rarity = "Common", Price = 200, Description = "Your name in sky blue." }),
+	item({ Id = "Name_Mint", Name = "Mint Name", Category = "Lifestyle", Slot = "NameColor", Icon = "🟢", Color = "#58DC91", Rarity = "Rare", Price = 350, Description = "Your name in fresh mint." }),
+	item({ Id = "Name_Purple", Name = "Purple Name", Category = "Lifestyle", Slot = "NameColor", Icon = "🟣", Color = "#B48CFF", Rarity = "Rare", Price = 350, Description = "Your name in royal purple." }),
+	item({ Id = "Name_Gold", Name = "Golden Name", Category = "Lifestyle", Slot = "NameColor", Icon = "🟡", Color = "#FFD45A", Rarity = "Epic", Price = 900, Description = "Your name in gold." }),
+	item({ Id = "Backdrop_Forest", Name = "Forest Theme", Category = "Lifestyle", Slot = "Backdrop", Icon = "🌲", Colors = { "#0B2E1E", "#2E6B4A" }, Rarity = "Common", Price = 250, Description = "A calm green menu background." }),
+	item({ Id = "Backdrop_Sunset", Name = "Sunset Theme", Category = "Lifestyle", Slot = "Backdrop", Icon = "🌅", Colors = { "#2B1055", "#FF7E5F" }, Rarity = "Rare", Price = 400, Description = "A warm sunset menu background." }),
+	item({ Id = "Backdrop_Ocean", Name = "Ocean Theme", Category = "Lifestyle", Slot = "Backdrop", Icon = "🌊", Colors = { "#0F2027", "#2C5364" }, Rarity = "Rare", Price = 400, Description = "A deep blue menu background." }),
+	item({ Id = "Backdrop_Galaxy", Name = "Galaxy Theme", Category = "Lifestyle", Slot = "Backdrop", Icon = "🌌", Colors = { "#0B0B2B", "#5B2A86" }, Rarity = "Epic", Price = 900, Description = "A starry purple menu background." }),
+
+	-- ===== Cosmetic effects =====
+	item({ Id = "Fx_Confetti", Name = "Confetti Reveal", Category = "Effects", Slot = "RevealEffect", Icon = "🎉", Glyphs = { "🎉", "🎊" }, Rarity = "Common", Price = 200, Description = "Confetti rains down during your Life Reveals." }),
+	item({ Id = "Fx_Hearts", Name = "Hearts Reveal", Category = "Effects", Slot = "RevealEffect", Icon = "💖", Glyphs = { "💖", "💕", "💗" }, Rarity = "Rare", Price = 450, Description = "Hearts float up during your Life Reveals." }),
+	item({ Id = "Fx_Fireworks", Name = "Fireworks Reveal", Category = "Effects", Slot = "RevealEffect", Icon = "🎆", Glyphs = { "🎆", "🎇", "✨" }, Rarity = "Rare", Price = 500, Description = "Fireworks light up your Life Reveals." }),
+	item({ Id = "Fx_Stars", Name = "Shooting Stars", Category = "Effects", Slot = "RevealEffect", Icon = "🌠", Glyphs = { "🌠", "⭐", "✨" }, Rarity = "Epic", Price = 900, Description = "Stars streak across your Life Reveals." }),
+	item({ Id = "Fx_Money", Name = "Money Rain", Category = "Effects", Slot = "RevealEffect", Icon = "💸", Glyphs = { "💸", "💵", "🪙" }, Rarity = "Legendary", Price = 1800, Description = "It's raining money (just for show)." }),
+	item({ Id = "Aura_Mist", Name = "Mystic Mist", Category = "Effects", Slot = "Aura", Icon = "🌫️", Aura = { Kind = "Smoke", Color = "#B48CFF" }, Rarity = "Rare", Price = 450, Description = "A swirl of purple mist around your character." }),
+	item({ Id = "Aura_Sparkle", Name = "Sparkle Aura", Category = "Effects", Slot = "Aura", Icon = "✨", Aura = { Kind = "Sparkles", Color = "#FFFFFF" }, Rarity = "Rare", Price = 500, Description = "Sparkles follow your character around." }),
+	item({ Id = "Aura_Fire", Name = "Fire Aura", Category = "Effects", Slot = "Aura", Icon = "🔥", Aura = { Kind = "Fire", Color = "#FF6A00", Secondary = "#FFD000" }, Rarity = "Epic", Price = 1200, Description = "Harmless flames for a fiery entrance." }),
+	item({ Id = "Aura_Gold", Name = "Golden Aura", Category = "Effects", Slot = "Aura", Icon = "🌟", Aura = { Kind = "Sparkles", Color = "#FFD45A" }, Rarity = "VIP", Price = 0, VipOnly = true, Description = "VIP exclusive." }),
+}
+
+Catalog.ById = {}
+for _, entry in ipairs(Catalog.Items) do
+	Catalog.ById[entry.Id] = entry
+end
+
+function Catalog.Get(id: any)
+	return if type(id) == "string" then Catalog.ById[id] else nil
+end
+
+function Catalog.InCategory(categoryId: string)
+	local list = {}
+	for _, entry in ipairs(Catalog.Items) do
+		if entry.Category == categoryId then
+			table.insert(list, entry)
+		end
+	end
+	return list
+end
+
+-- Case-insensitive search over name, description and category.
+function Catalog.Search(query: string, categoryId: string?)
+	local q = string.lower(query or "")
+	local list = {}
+	for _, entry in ipairs(Catalog.Items) do
+		if not categoryId or entry.Category == categoryId then
+			local haystack = string.lower(entry.Name .. " " .. entry.Description .. " " .. entry.Category .. " " .. entry.Rarity)
+			if q == "" or haystack:find(q, 1, true) then
+				table.insert(list, entry)
+			end
+		end
+	end
+	return list
+end
+
+-- Checks the catalog itself; returns a list of problems (used by tests and at startup).
+function Catalog.Validate()
+	local problems, seen, categories = {}, {}, {}
+	for _, c in ipairs(Catalog.Categories) do
+		categories[c.Id] = true
+	end
+	for _, entry in ipairs(Catalog.Items) do
+		if seen[entry.Id] then
+			table.insert(problems, "duplicate item " .. entry.Id)
+		end
+		seen[entry.Id] = true
+		if not categories[entry.Category] then
+			table.insert(problems, entry.Id .. ": unknown category")
+		end
+		local slot = Catalog.Slots[entry.Slot]
+		if not slot then
+			table.insert(problems, entry.Id .. ": unknown slot")
+		elseif slot.Category ~= entry.Category then
+			table.insert(problems, entry.Id .. ": slot belongs to another category")
+		end
+		if not Catalog.Rarities[entry.Rarity] then
+			table.insert(problems, entry.Id .. ": unknown rarity")
+		end
+		if entry.VipOnly then
+			if entry.Price ~= 0 or entry.Rarity ~= "VIP" then
+				table.insert(problems, entry.Id .. ": VIP items are free with VIP and marked VIP")
+			end
+		elseif type(entry.Price) ~= "number" or entry.Price <= 0 or entry.Price % 1 ~= 0 then
+			table.insert(problems, entry.Id .. ": needs a positive whole price")
+		end
+		if entry.Slot == "Hair" and not entry.Face then
+			table.insert(problems, entry.Id .. ": looks need a Face")
+		elseif entry.Slot == "NameColor" and not (type(entry.Color) == "string" and entry.Color:match("^#%x%x%x%x%x%x$")) then
+			table.insert(problems, entry.Id .. ": name colours need a #RRGGBB Color")
+		elseif entry.Slot == "Title" and type(entry.Text) ~= "string" then
+			table.insert(problems, entry.Id .. ": titles need Text")
+		elseif entry.Slot == "Backdrop" and not (entry.Colors and #entry.Colors == 2) then
+			table.insert(problems, entry.Id .. ": themes need two Colors")
+		elseif entry.Slot == "RevealEffect" and not (entry.Glyphs and #entry.Glyphs >= 1) then
+			table.insert(problems, entry.Id .. ": reveal effects need Glyphs")
+		elseif entry.Slot == "Aura" and not (entry.Aura and entry.Aura.Kind) then
+			table.insert(problems, entry.Id .. ": auras need Aura settings")
+		end
+	end
+	return problems
+end
+
+return Catalog
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="7">
+          <Properties>
             <string name="Name">DataTemplate</string>
             <string name="Source"><![CDATA[--[[
 	DataTemplate  (ReplicatedStorage.Shared.Data.DataTemplate)
@@ -210,7 +468,9 @@ return Careers
 	├─ ActiveSlot         "Slot1" | "Slot2" | "Slot3"
 	├─ Slots              { Slot1 = Life | false, ... }  (false = empty slot)
 	├─ LifeHistory        array of completed-life summaries (capped)
-	├─ Inventory          { Owned = { [itemId] = true }, Equipped = { [category] = itemId } }
+	├─ Inventory          { Owned = { [itemId] = true }, Equipped = { [slot] = itemId } } (Data/Catalog)
+	├─ Passes             game pass ownership (from Roblox on every join)
+	├─ PassesUnverified   in-game pass purchases Roblox hasn't confirmed yet
 	├─ Achievements       { [achievementId] = unlockUnixTime }
 	├─ Collectibles       { [collectibleId] = true }
 	├─ Daily              login streak / daily reward state
@@ -259,7 +519,9 @@ local profileTemplate = {
 	ActiveSlot = "Slot1",
 	Slots = {},
 	LifeHistory = {},
-	Inventory = { Owned = {}, Equipped = {} },
+	Inventory = { Owned = {}, Equipped = {} }, -- cosmetics: Owned[itemId] = true, Equipped[slot] = itemId
+	Passes = {}, -- game pass ownership { VIP = true, CoinBooster = true }, from Roblox on every join
+	PassesUnverified = {}, -- passes bought in this session that Roblox hasn't confirmed yet (re-checked on join)
 	Achievements = {},
 	Collectibles = {},
 	Daily = { LastClaimDay = 0, Streak = 0, BestStreak = 0 },
@@ -269,6 +531,8 @@ local profileTemplate = {
 		LivesCompleted = 0,
 		DecisionsMade = 0,
 		CoinsEarned = 0,
+		CoinsBought = 0,
+		CoinsSpent = 0,
 		HighestNetWorth = 0,
 		RareEventsSeen = 0,
 		FirstJoin = 0,
@@ -427,7 +691,7 @@ return DataTemplate
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="7">
+        <Item class="ModuleScript" referent="8">
           <Properties>
             <string name="Name">LifeStages</string>
             <string name="Source"><![CDATA[--[[
@@ -478,7 +742,7 @@ return LifeStages
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="8">
+        <Item class="ModuleScript" referent="9">
           <Properties>
             <string name="Name">Lifestyle</string>
             <string name="Source"><![CDATA[--[[
@@ -540,7 +804,53 @@ return Lifestyle
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="9">
+        <Item class="ModuleScript" referent="10">
+          <Properties>
+            <string name="Name">Monetisation</string>
+            <string name="Source"><![CDATA[--[[
+	Monetisation  (ReplicatedStorage.Shared.Data.Monetisation)
+	Real Robux purchases through Roblox's MarketplaceService. Nothing is
+	faked: prices shown in the game come from Roblox itself, purchases use
+	Roblox's own purchase prompt, and everything is granted by the server
+	only after Roblox confirms it (Services/StoreService).
+
+	HOW TO SET UP (once, after publishing the game):
+	  1. Creator Dashboard (create.roblox.com) → your experience →
+	     Monetization → Passes → create "VIP" and "2× Coins" passes, set a price.
+	  2. Monetization → Developer Products → create the coin packs below.
+	  3. Paste each Id here. Anything left at 0 is simply hidden in the game.
+
+	Fair play: everything you can buy is cosmetic or speeds up earning
+	cosmetic Coins. Nothing affects a life's choices, stats or outcomes.
+]]
+
+return {
+	Passes = {
+		VIP = {
+			Id = 0, -- paste your VIP game pass id
+			Name = "VIP",
+			Icon = "⭐",
+			Description = "6 exclusive VIP cosmetics (Crown, Golden Robes, Grand Manor, Unicorn, Golden Aura, VIP title).",
+		},
+		CoinBooster = {
+			Id = 0, -- paste your 2× Coins game pass id
+			Name = "2× Coins",
+			Icon = "🪙",
+			Description = "Earn double Coins from playing (completing stages and lives, group and city events).",
+		},
+	},
+	PassOrder = { "VIP", "CoinBooster" },
+
+	Products = {
+		{ Key = "CoinsSmall", Id = 0, Coins = 500, Name = "Pocket of Coins", Icon = "🪙" },
+		{ Key = "CoinsMedium", Id = 0, Coins = 1500, Name = "Bag of Coins", Icon = "💰" },
+		{ Key = "CoinsLarge", Id = 0, Coins = 4000, Name = "Chest of Coins", Icon = "🧰" },
+	},
+}
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="11">
           <Properties>
             <string name="Name">NamePool</string>
             <string name="Source"><![CDATA[--[[
@@ -559,7 +869,7 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="10">
+        <Item class="ModuleScript" referent="12">
           <Properties>
             <string name="Name">SoundIds</string>
             <string name="Source"><![CDATA[--[[
@@ -588,7 +898,7 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="11">
+        <Item class="ModuleScript" referent="13">
           <Properties>
             <string name="Name">StatDefinitions</string>
             <string name="Source"><![CDATA[--[[
@@ -634,7 +944,7 @@ return StatDefinitions
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="12">
+        <Item class="ModuleScript" referent="14">
           <Properties>
             <string name="Name">Traits</string>
             <string name="Source"><![CDATA[--[[
@@ -695,7 +1005,7 @@ return Traits
           </Properties>
         </Item>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">Net</string>
           <string name="Source"><![CDATA[--[[
@@ -876,7 +1186,7 @@ Net._allow = allow
 return Net
 ]]></string>
         </Properties>
-        <Item class="ModuleScript" referent="14">
+        <Item class="ModuleScript" referent="16">
           <Properties>
             <string name="Name">RemoteDefinitions</string>
             <string name="Source"><![CDATA[--[[
@@ -960,17 +1270,23 @@ return {
 		JoinFriendServer = { RateLimit = { Rate = 0.2, Burst = 2 } }, -- (placeId, jobId)
 		-- ===== City events (CityEventService) =====
 		CityEventRespond = { RateLimit = { Rate = 1, Burst = 3 } }, -- (eventId, join)
+
+		-- ===== Shop & store (ShopService, StoreService) =====
+		ShopBuy = { RateLimit = { Rate = 2, Burst = 4 } }, -- (itemId)
+		ShopEquip = { RateLimit = { Rate = 4, Burst = 8 } }, -- (itemId)
+		ShopUnequip = { RateLimit = { Rate = 4, Burst = 8 } }, -- (slot)
+		GetStoreInfo = { RateLimit = { Rate = 0.5, Burst = 2 } }, -- () -> Robux products & passes
 	},
 }
 ]]></string>
           </Properties>
         </Item>
       </Item>
-      <Item class="Folder" referent="15">
+      <Item class="Folder" referent="17">
         <Properties>
           <string name="Name">Util</string>
         </Properties>
-        <Item class="ModuleScript" referent="16">
+        <Item class="ModuleScript" referent="18">
           <Properties>
             <string name="Name">Budget</string>
             <string name="Source"><![CDATA[--[[
@@ -1079,7 +1395,7 @@ return Budget
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="17">
+        <Item class="ModuleScript" referent="19">
           <Properties>
             <string name="Name">Endings</string>
             <string name="Source"><![CDATA[--[[
@@ -1249,7 +1565,7 @@ return Endings
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="18">
+        <Item class="ModuleScript" referent="20">
           <Properties>
             <string name="Name">Format</string>
             <string name="Source"><![CDATA[--[[
@@ -1293,7 +1609,7 @@ return Format
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="19">
+        <Item class="ModuleScript" referent="21">
           <Properties>
             <string name="Name">Futures</string>
             <string name="Source"><![CDATA[--[[
@@ -1687,7 +2003,7 @@ return Futures
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="20">
+        <Item class="ModuleScript" referent="22">
           <Properties>
             <string name="Name">People</string>
             <string name="Source"><![CDATA[--[[
@@ -1874,7 +2190,7 @@ return People
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="21">
+        <Item class="ModuleScript" referent="23">
           <Properties>
             <string name="Name">Signal</string>
             <string name="Source"><![CDATA[--[[
@@ -1947,7 +2263,7 @@ return Signal
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="22">
+        <Item class="ModuleScript" referent="24">
           <Properties>
             <string name="Name">StatMath</string>
             <string name="Source"><![CDATA[--[[
@@ -2025,7 +2341,73 @@ return StatMath
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="23">
+        <Item class="ModuleScript" referent="25">
+          <Properties>
+            <string name="Name">Style</string>
+            <string name="Source"><![CDATA[--[[
+	Style  (ReplicatedStorage.Shared.Util.Style)
+	Turns equipped cosmetics into a "look" used everywhere:
+	avatar face + outfit + accessory + pet, title, name colour, home/car
+	styles in Life Reveal scenes, menu theme, reveal effect, character aura.
+
+	Style.Of(equipped) -> style table (defaults for empty slots)
+	Style.Public(equipped) -> the parts other players see (safe to send)
+	Cosmetics are public by design: they're for showing off.
+]]
+
+local Catalog = require(script.Parent.Parent.Data.Catalog)
+
+local Style = {}
+
+Style.DefaultFace = "🧑"
+
+function Style.Of(equipped)
+	equipped = equipped or {}
+	local function get(slot)
+		return Catalog.Get(equipped[slot])
+	end
+	local hair, title, nameColor, backdrop, effect, aura = get("Hair"), get("Title"), get("NameColor"), get("Backdrop"), get("RevealEffect"), get("Aura")
+	local function icon(slot)
+		local entry = get(slot)
+		return entry and entry.Icon or nil
+	end
+	return {
+		Face = if hair then hair.Face else Style.DefaultFace,
+		Outfit = icon("Outfit"),
+		Accessory = icon("Accessory"),
+		Pet = icon("Pet"),
+		House = icon("House"),
+		Apartment = icon("Apartment"),
+		Car = icon("Car"),
+		Furniture = icon("Furniture"),
+		Title = if title then title.Text else nil,
+		NameColor = if nameColor then nameColor.Color else nil,
+		Backdrop = if backdrop then backdrop.Colors else nil,
+		RevealGlyphs = if effect then effect.Glyphs else nil,
+		Aura = if aura then aura.Aura else nil,
+	}
+end
+
+-- The subset shown to other players (avatar, title, name colour).
+function Style.Public(equipped)
+	local s = Style.Of(equipped)
+	return { Face = s.Face, Outfit = s.Outfit, Accessory = s.Accessory, Pet = s.Pet, Title = s.Title, NameColor = s.NameColor }
+end
+
+-- One-line avatar, e.g. "🧑‍🦱👔🎩 🐶"
+function Style.AvatarText(style): string
+	local text = style.Face .. (style.Outfit or "") .. (style.Accessory or "")
+	if style.Pet then
+		text ..= " " .. style.Pet
+	end
+	return text
+end
+
+return Style
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="26">
           <Properties>
             <string name="Name">TableUtil</string>
             <string name="Source"><![CDATA[--[[
@@ -2138,19 +2520,19 @@ return TableUtil
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="24">
+  <Item class="ServerScriptService" referent="27">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="25">
+    <Item class="Folder" referent="28">
       <Properties>
         <string name="Name">Server</string>
       </Properties>
-      <Item class="Folder" referent="26">
+      <Item class="Folder" referent="29">
         <Properties>
           <string name="Name">Content</string>
         </Properties>
-        <Item class="ModuleScript" referent="27">
+        <Item class="ModuleScript" referent="30">
           <Properties>
             <string name="Name">CityEvents</string>
             <string name="Source"><![CDATA[--[[
@@ -2190,7 +2572,7 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="28">
+        <Item class="ModuleScript" referent="31">
           <Properties>
             <string name="Name">Events</string>
             <string name="Source"><![CDATA[--[[
@@ -2311,7 +2693,7 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="29">
+        <Item class="ModuleScript" referent="32">
           <Properties>
             <string name="Name">GroupScenarios</string>
             <string name="Source"><![CDATA[--[[
@@ -2559,7 +2941,7 @@ return {
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="30">
+        <Item class="ModuleScript" referent="33">
           <Properties>
             <string name="Name">Scenarios</string>
             <string name="Source"><![CDATA[--[[
@@ -2888,7 +3270,7 @@ end
 return Scenarios
 ]]></string>
           </Properties>
-          <Item class="ModuleScript" referent="31">
+          <Item class="ModuleScript" referent="34">
             <Properties>
               <string name="Name">Adult</string>
               <string name="Source"><![CDATA[--[[
@@ -3183,7 +3565,7 @@ return {
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="32">
+          <Item class="ModuleScript" referent="35">
             <Properties>
               <string name="Name">Childhood</string>
               <string name="Source"><![CDATA[--[[
@@ -3820,7 +4202,7 @@ return {
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="33">
+          <Item class="ModuleScript" referent="36">
             <Properties>
               <string name="Name">LifeAndWork</string>
               <string name="Source"><![CDATA[--[[
@@ -4251,7 +4633,7 @@ return {
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="34">
+          <Item class="ModuleScript" referent="37">
             <Properties>
               <string name="Name">MiddleAge</string>
               <string name="Source"><![CDATA[--[[
@@ -4493,7 +4875,7 @@ return {
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="35">
+          <Item class="ModuleScript" referent="38">
             <Properties>
               <string name="Name">Retirement</string>
               <string name="Source"><![CDATA[--[[
@@ -4656,7 +5038,7 @@ return {
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="36">
+          <Item class="ModuleScript" referent="39">
             <Properties>
               <string name="Name">Teen</string>
               <string name="Source"><![CDATA[--[[
@@ -4911,7 +5293,7 @@ return {
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="37">
+          <Item class="ModuleScript" referent="40">
             <Properties>
               <string name="Name">YoungAdult</string>
               <string name="Source"><![CDATA[--[[
@@ -5190,7 +5572,7 @@ return {
             </Properties>
           </Item>
         </Item>
-        <Item class="ModuleScript" referent="38">
+        <Item class="ModuleScript" referent="41">
           <Properties>
             <string name="Name">Twists</string>
             <string name="Source"><![CDATA[--[[
@@ -5250,11 +5632,11 @@ return {
           </Properties>
         </Item>
       </Item>
-      <Item class="Folder" referent="39">
+      <Item class="Folder" referent="42">
         <Properties>
           <string name="Name">Lib</string>
         </Properties>
-        <Item class="ModuleScript" referent="40">
+        <Item class="ModuleScript" referent="43">
           <Properties>
             <string name="Name">Actions</string>
             <string name="Source"><![CDATA[--[[
@@ -5471,7 +5853,41 @@ return Actions
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="41">
+        <Item class="ModuleScript" referent="44">
+          <Properties>
+            <string name="Name">CoinRewards</string>
+            <string name="Source"><![CDATA[--[[
+	CoinRewards  (ServerScriptService.Server.Lib.CoinRewards)
+	The one place Coins are earned by PLAYING (not bought). Call inside a
+	DataService.Update mutator. The 2× Coins game pass doubles these.
+
+	Sources & amounts (see Config): completing a stage, completing a life
+	(score-based, from the Final Reveal), joining group decisions and
+	city events.
+]]
+
+local CoinRewards = {}
+
+function CoinRewards.Multiplier(data): number
+	return if data.Passes and data.Passes.CoinBooster then 2 else 1
+end
+
+-- Adds `amount` (× multiplier) and returns what was actually granted.
+function CoinRewards.Grant(data, amount: number): number
+	if type(amount) ~= "number" or amount <= 0 then
+		return 0
+	end
+	local granted = math.floor(amount * CoinRewards.Multiplier(data))
+	data.Coins += granted
+	data.Lifetime.CoinsEarned += granted
+	return granted
+end
+
+return CoinRewards
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="45">
           <Properties>
             <string name="Name">Conditions</string>
             <string name="Source"><![CDATA[--[[
@@ -5715,7 +6131,7 @@ return Conditions
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="42">
+        <Item class="ModuleScript" referent="46">
           <Properties>
             <string name="Name">Consequences</string>
             <string name="Source"><![CDATA[--[[
@@ -6273,7 +6689,7 @@ return Consequences
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="43">
+        <Item class="ModuleScript" referent="47">
           <Properties>
             <string name="Name">MockDataStore</string>
             <string name="Source"><![CDATA[--[[
@@ -6328,7 +6744,7 @@ return MockDataStore
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="44">
+        <Item class="ModuleScript" referent="48">
           <Properties>
             <string name="Name">RandomEvents</string>
             <string name="Source"><![CDATA[--[[
@@ -6400,7 +6816,7 @@ return RandomEvents
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="45">
+        <Item class="ModuleScript" referent="49">
           <Properties>
             <string name="Name">Reveal</string>
             <string name="Source"><![CDATA[--[[
@@ -6793,7 +7209,7 @@ return Reveal
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="46">
+        <Item class="ModuleScript" referent="50">
           <Properties>
             <string name="Name">ScenarioPicker</string>
             <string name="Source"><![CDATA[--[[
@@ -6906,7 +7322,7 @@ return ScenarioPicker
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="47">
+        <Item class="ModuleScript" referent="51">
           <Properties>
             <string name="Name">SessionLock</string>
             <string name="Source"><![CDATA[--[[
@@ -6962,7 +7378,7 @@ return SessionLock
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="48">
+        <Item class="ModuleScript" referent="52">
           <Properties>
             <string name="Name">Validate</string>
             <string name="Source"><![CDATA[--[[
@@ -7054,7 +7470,7 @@ return Validate
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="49">
+        <Item class="ModuleScript" referent="53">
           <Properties>
             <string name="Name">Yearly</string>
             <string name="Source"><![CDATA[--[[
@@ -7241,7 +7657,7 @@ return Yearly
           </Properties>
         </Item>
       </Item>
-      <Item class="Script" referent="50">
+      <Item class="Script" referent="54">
         <Properties>
           <string name="Name">Main</string>
           <token name="RunContext">0</token>
@@ -7302,11 +7718,11 @@ print(("[Server] CHOOSE YOUR LIFE started with %d services"):format(#services))
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="51">
+      <Item class="Folder" referent="55">
         <Properties>
           <string name="Name">Services</string>
         </Properties>
-        <Item class="ModuleScript" referent="52">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">CityEventService</string>
             <string name="Source"><![CDATA[--[[
@@ -7334,6 +7750,7 @@ local Server = script.Parent.Parent
 local Conditions = require(Server.Lib.Conditions)
 local Consequences = require(Server.Lib.Consequences)
 local Scenarios = require(Server.Content.Scenarios)
+local CoinRewards = require(Server.Lib.CoinRewards)
 
 local DataService = require(script.Parent.DataService)
 
@@ -7461,6 +7878,7 @@ function CityEventService.Respond(player: Player, eventId: any, join: any)
 		local summary = Consequences.Apply(life, event.Def.Effects, lifeRng, true, event.OutcomeIndex)
 		summary.Applied.Wealth = nil
 		result = {
+			Coins = CoinRewards.Grant(d, Config.CityEventCoins),
 			Joined = true,
 			Icon = event.Def.Icon,
 			Title = event.Def.Title,
@@ -7503,7 +7921,145 @@ return CityEventService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="53">
+        <Item class="ModuleScript" referent="57">
+          <Properties>
+            <string name="Name">CosmeticsService</string>
+            <string name="Source"><![CDATA[--[[
+	CosmeticsService  (ServerScriptService.Server.Services.CosmeticsService)
+	Shows equipped cosmetics on the player's Roblox character for everyone in
+	the server: a name tag (with title and name colour) above the head, and
+	an aura (Sparkles / Fire / Smoke, built-in effects with no asset ids
+	needed). Reapplied on spawn and whenever equipment changes. Visible once
+	the 3D world is in play (Phase 8).
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Style = require(Shared.Util.Style)
+
+local DataService = require(script.Parent.DataService)
+local ShopService = require(script.Parent.ShopService)
+
+local CosmeticsService = {}
+CosmeticsService.Priority = 17
+
+local TAG = "CYL_Cosmetic"
+
+local function color(hex: string?, fallback: Color3): Color3
+	if type(hex) == "string" then
+		local ok, value = pcall(Color3.fromHex, hex)
+		if ok then
+			return value
+		end
+	end
+	return fallback
+end
+
+function CosmeticsService.Apply(player: Player)
+	local character = player.Character
+	local data = DataService.Get(player)
+	if not character or not data then
+		return
+	end
+	for _, d in ipairs(character:GetDescendants()) do
+		if d:GetAttribute(TAG) then
+			d:Destroy()
+		end
+	end
+	local style = Style.Of(data.Inventory.Equipped)
+	local head = character:FindFirstChild("Head")
+	local root = character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None -- our name tag replaces it
+	end
+	if head then
+		local billboard = Instance.new("BillboardGui")
+		billboard.Name = "CYL_NameTag"
+		billboard:SetAttribute(TAG, true)
+		billboard.Size = UDim2.fromOffset(220, 56)
+		billboard.StudsOffset = Vector3.new(0, 2.6, 0)
+		billboard.MaxDistance = 80
+		billboard.Adornee = head
+		local name = Instance.new("TextLabel")
+		name.Name = "Name"
+		name.BackgroundTransparency = 1
+		name.Size = UDim2.new(1, 0, 0.6, 0)
+		name.Text = player.DisplayName
+		name.TextScaled = true
+		name.TextColor3 = color(style.NameColor, Color3.fromRGB(255, 255, 255))
+		name.TextStrokeTransparency = 0.4
+		name.Font = Enum.Font.GothamBold
+		name.Parent = billboard
+		if style.Title then
+			local title = Instance.new("TextLabel")
+			title.Name = "Title"
+			title.BackgroundTransparency = 1
+			title.Position = UDim2.fromScale(0, 0.6)
+			title.Size = UDim2.new(1, 0, 0.4, 0)
+			title.Text = style.Title
+			title.TextScaled = true
+			title.TextColor3 = Color3.fromRGB(255, 212, 90)
+			title.TextStrokeTransparency = 0.5
+			title.Font = Enum.Font.Gotham
+			title.Parent = billboard
+		end
+		billboard.Parent = head
+	end
+	if root and style.Aura then
+		local aura = style.Aura
+		local effect
+		if aura.Kind == "Fire" then
+			effect = Instance.new("Fire")
+			effect.Color = color(aura.Color, Color3.fromRGB(255, 106, 0))
+			effect.SecondaryColor = color(aura.Secondary, Color3.fromRGB(255, 208, 0))
+			effect.Size = 4
+			effect.Heat = 6
+		elseif aura.Kind == "Smoke" then
+			effect = Instance.new("Smoke")
+			effect.Color = color(aura.Color, Color3.fromRGB(180, 140, 255))
+			effect.Opacity = 0.15
+			effect.RiseVelocity = 2
+			effect.Size = 2
+		else
+			effect = Instance.new("Sparkles")
+			effect.SparkleColor = color(aura.Color, Color3.fromRGB(255, 255, 255))
+		end
+		effect.Name = "CYL_Aura"
+		effect:SetAttribute(TAG, true)
+		effect.Parent = root
+	end
+end
+
+function CosmeticsService.Init()
+	ShopService.EquipmentChanged:Connect(function(player)
+		CosmeticsService.Apply(player)
+	end)
+end
+
+function CosmeticsService.Start()
+	local function watch(player: Player)
+		player.CharacterAdded:Connect(function()
+			task.wait() -- let the character finish assembling
+			CosmeticsService.Apply(player)
+		end)
+		if player.Character then
+			CosmeticsService.Apply(player)
+		end
+	end
+	Players.PlayerAdded:Connect(watch)
+	for _, player in ipairs(Players:GetPlayers()) do
+		watch(player)
+	end
+end
+
+return CosmeticsService
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="58">
           <Properties>
             <string name="Name">DataService</string>
             <string name="Source"><![CDATA[--[[
@@ -7900,7 +8456,7 @@ return DataService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="54">
+        <Item class="ModuleScript" referent="59">
           <Properties>
             <string name="Name">LifeService</string>
             <string name="Source"><![CDATA[--[[
@@ -7952,6 +8508,7 @@ local RandomEvents = require(Server.Lib.RandomEvents)
 local Yearly = require(Server.Lib.Yearly)
 local Actions = require(Server.Lib.Actions)
 local Reveal = require(Server.Lib.Reveal)
+local CoinRewards = require(Server.Lib.CoinRewards)
 local Scenarios = require(Server.Content.Scenarios)
 
 local DataService = require(script.Parent.DataService)
@@ -8249,6 +8806,8 @@ function LifeService.MakeChoice(player: Player, scenarioArg: any, choiceArg: any
 				l.Stage += 1
 				l.ScenarioIndex = 0
 				revealPayload = Reveal.Stage(l, stageCompleted, rngFor(l, 6))
+				revealPayload.Coins = CoinRewards.Grant(d, Config.StageCoins)
+				revealPayload.Boosted = CoinRewards.Multiplier(d) > 1
 			else
 				l.Completed = true
 				lifeCompleted = true
@@ -8258,8 +8817,8 @@ function LifeService.MakeChoice(player: Player, scenarioArg: any, choiceArg: any
 				l.HistoryId = finalEntry.Id
 				table.insert(d.LifeHistory, finalEntry)
 				TableUtil.TrimArray(d.LifeHistory, Config.MaxLifeHistory)
-				d.Coins += finalEntry.Coins
-				d.Lifetime.CoinsEarned += finalEntry.Coins
+				finalEntry.Boosted = CoinRewards.Multiplier(d) > 1
+				finalEntry.Coins = CoinRewards.Grant(d, finalEntry.Coins)
 			end
 		end
 
@@ -8404,7 +8963,7 @@ return LifeService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="55">
+        <Item class="ModuleScript" referent="60">
           <Properties>
             <string name="Name">PartyService</string>
             <string name="Source"><![CDATA[--[[
@@ -8447,11 +9006,14 @@ local Futures = require(Shared.Util.Futures)
 local TableUtil = require(Shared.Util.TableUtil)
 local LifeStages = require(Shared.Data.LifeStages)
 local Careers = require(Shared.Data.Careers)
+local Style = require(Shared.Util.Style)
 
 local Server = script.Parent.Parent
 local Conditions = require(Server.Lib.Conditions)
 local Consequences = require(Server.Lib.Consequences)
 local Scenarios = require(Server.Content.Scenarios)
+local CoinRewards = require(Server.Lib.CoinRewards)
+local Config = require(Shared.Config)
 
 local DataService = require(script.Parent.DataService)
 local RevealService = require(script.Parent.RevealService)
@@ -8513,6 +9075,10 @@ end
 
 local function memberInfo(party, player: Player)
 	local info = { UserId = player.UserId, DisplayName = displayName(player), IsLeader = party.Leader == player }
+	local data = DataService.Get(player)
+	if data then
+		info.Style = Style.Public(data.Inventory.Equipped)
+	end
 	local life = DataService.GetActiveLife(player)
 	if life then
 		info.LifeName = life.Name
@@ -8955,7 +9521,9 @@ function resolveEvent(party)
 			TableUtil.TrimArray(life.Shared, PartyService.MaxSharedMoments)
 			Consequences.SyncWealth(life)
 			summary.Applied.Wealth = nil
+			local coins = CoinRewards.Grant(d, Config.GroupEventCoins)
 			result = {
+				Coins = coins,
 				EventId = event.Id,
 				Icon = scenario.Icon,
 				Title = scenario.Title,
@@ -9103,7 +9671,7 @@ return PartyService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="61">
           <Properties>
             <string name="Name">RevealService</string>
             <string name="Source"><![CDATA[--[[
@@ -9124,6 +9692,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Net = require(ReplicatedStorage:WaitForChild("Shared").Net)
+local Style = require(ReplicatedStorage:WaitForChild("Shared").Util.Style)
 
 local DataService = require(script.Parent.DataService)
 local SettingsService = require(script.Parent.SettingsService)
@@ -9168,6 +9737,7 @@ function RevealService.CardFor(viewer: Player, target: Player)
 		DisplayName = target.DisplayName or target.Name,
 		IsYou = relation == "Self",
 		IsFriend = relation == "Friend",
+		Style = Style.Public(data.Inventory.Equipped), -- cosmetics are for showing off
 	}
 	if SettingsService.CanView(target, "ShareHistory", relation) then
 		local endings = {}
@@ -9232,7 +9802,7 @@ return RevealService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="57">
+        <Item class="ModuleScript" referent="62">
           <Properties>
             <string name="Name">SettingsService</string>
             <string name="Source"><![CDATA[--[[
@@ -9320,7 +9890,141 @@ return SettingsService
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="58">
+        <Item class="ModuleScript" referent="63">
+          <Properties>
+            <string name="Name">ShopService</string>
+            <string name="Source"><![CDATA[--[[
+	ShopService  (ServerScriptService.Server.Services.ShopService)
+	The Coin shop and inventory. Everything is validated on the server:
+	the client only sends an item id.
+
+	ShopBuy(itemId)      buy with Coins (auto-equips); VIP items are free with VIP
+	ShopEquip(itemId)    equip something you own
+	ShopUnequip(slot)    back to the default look for that slot
+	ShopService.EquipmentChanged(player) fires after any change (Cosmetics).
+]]
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Net = require(Shared.Net)
+local Signal = require(Shared.Util.Signal)
+local Catalog = require(Shared.Data.Catalog)
+
+local DataService = require(script.Parent.DataService)
+
+local ShopService = {}
+ShopService.Priority = 15
+ShopService.EquipmentChanged = Signal.new() -- (player)
+
+local function hasVip(data): boolean
+	return data.Passes ~= nil and data.Passes.VIP == true
+end
+
+function ShopService.Buy(player: Player, itemId: any)
+	local item = Catalog.Get(itemId)
+	if not item then
+		return false, "NoSuchItem"
+	end
+	local data = DataService.Get(player)
+	if not data then
+		return false, "NotLoaded"
+	end
+	if data.Inventory.Owned[item.Id] then
+		return false, "AlreadyOwned"
+	end
+	if item.VipOnly then
+		if not hasVip(data) then
+			return false, "NeedVIP"
+		end
+	elseif data.Coins < item.Price then
+		return false, "NotEnoughCoins"
+	end
+	DataService.Update(player, function(d)
+		if not item.VipOnly then
+			d.Coins -= item.Price
+			d.Lifetime.CoinsSpent += item.Price
+		end
+		d.Inventory.Owned[item.Id] = true
+		d.Inventory.Equipped[item.Slot] = item.Id
+	end)
+	ShopService.EquipmentChanged:Fire(player)
+	return true, { Coins = DataService.Get(player).Coins, Equipped = item.Slot }
+end
+
+function ShopService.Equip(player: Player, itemId: any)
+	local item = Catalog.Get(itemId)
+	if not item then
+		return false, "NoSuchItem"
+	end
+	local data = DataService.Get(player)
+	if not data then
+		return false, "NotLoaded"
+	end
+	if not data.Inventory.Owned[item.Id] then
+		return false, "NotOwned"
+	end
+	if item.VipOnly and not hasVip(data) then
+		return false, "NeedVIP"
+	end
+	DataService.Update(player, function(d)
+		d.Inventory.Equipped[item.Slot] = item.Id
+	end)
+	ShopService.EquipmentChanged:Fire(player)
+	return true, { Slot = item.Slot }
+end
+
+function ShopService.Unequip(player: Player, slot: any)
+	if type(slot) ~= "string" or not Catalog.Slots[slot] then
+		return false, "BadSlot"
+	end
+	if not DataService.Update(player, function(d)
+		d.Inventory.Equipped[slot] = nil
+	end) then
+		return false, "NotLoaded"
+	end
+	ShopService.EquipmentChanged:Fire(player)
+	return true
+end
+
+--[[
+	Removes anything that's no longer valid: unknown items (removed from the
+	catalog), items not owned, and VIP items without VIP. Called on join and
+	whenever VIP ownership changes.
+]]
+function ShopService.Sanitize(player: Player)
+	DataService.Update(player, function(d)
+		for slot, itemId in pairs(d.Inventory.Equipped) do
+			local item = Catalog.Get(itemId)
+			if not item or item.Slot ~= slot or not d.Inventory.Owned[itemId] or (item.VipOnly and not hasVip(d)) then
+				d.Inventory.Equipped[slot] = nil
+			end
+		end
+	end)
+	ShopService.EquipmentChanged:Fire(player)
+end
+
+function ShopService.Init()
+	local problems = Catalog.Validate()
+	for _, problem in ipairs(problems) do
+		warn("[ShopService] Catalog problem: " .. problem)
+	end
+	DataService.ProfileLoaded:Connect(function(player)
+		ShopService.Sanitize(player)
+	end)
+end
+
+function ShopService.Start()
+	Net.Handle("ShopBuy", ShopService.Buy)
+	Net.Handle("ShopEquip", ShopService.Equip)
+	Net.Handle("ShopUnequip", ShopService.Unequip)
+end
+
+return ShopService
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="64">
           <Properties>
             <string name="Name">StatService</string>
             <string name="Source"><![CDATA[--[[
@@ -9388,26 +10092,278 @@ return StatService
 ]]></string>
           </Properties>
         </Item>
+        <Item class="ModuleScript" referent="65">
+          <Properties>
+            <string name="Name">StoreService</string>
+            <string name="Source"><![CDATA[--[[
+	StoreService  (ServerScriptService.Server.Services.StoreService)
+	Legitimate Robux purchases via MarketplaceService (ids in Data/Monetisation).
+
+	Developer products (coin packs): MarketplaceService.ProcessReceipt
+	  • each PurchaseId is granted at most once (profile.ProcessedReceipts)
+	  • Coins are granted, then the profile is SAVED, and only then do we
+	    tell Roblox PurchaseGranted. If anything fails we answer
+	    NotProcessedYet, and Roblox safely retries later.
+	Game passes (VIP, 2× Coins):
+	  • on every join, ownership comes from Roblox (UserOwnsGamePassAsync);
+	  • when Roblox reports a purchase in this server (the server-side
+	    PromptGamePassPurchaseFinished), the pass applies straight away, as
+	    Roblox's own guide does. Roblox caches ownership, so a pass bought
+	    in-game can still read as "not owned" for the rest of the session.
+	    Until Roblox confirms ownership, the pass is marked unverified
+	    (data.PassesUnverified) and is re-checked on the next join; it is
+	    removed if Roblox says it isn't owned (or can't say).
+	  • Remotes never grant passes: the client's word is never trusted.
+	GetStoreInfo(): real names and Robux prices from Roblox (GetProductInfo).
+	Unconfigured ids (0) are hidden: no placeholder buttons, nothing fake.
+]]
+
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Net = require(Shared.Net)
+local Signal = require(Shared.Util.Signal)
+local Config = require(Shared.Config)
+local Monetisation = require(Shared.Data.Monetisation)
+local TableUtil = require(Shared.Util.TableUtil)
+
+local DataService = require(script.Parent.DataService)
+local ShopService = require(script.Parent.ShopService)
+
+local StoreService = {}
+StoreService.Priority = 16
+StoreService.PassChanged = Signal.new() -- (player, key, owned)
+StoreService.CoinsPurchased = Signal.new() -- (player, coins)
+
+-- Looked up on demand so ids pasted into Data/Monetisation are always current.
+local function productFor(id: number)
+	for _, product in ipairs(Monetisation.Products) do
+		if product.Id ~= 0 and product.Id == id then
+			return product
+		end
+	end
+	return nil
+end
+
+local function passKeys(): { [number]: string }
+	local map = {}
+	for key, pass in pairs(Monetisation.Passes) do
+		if pass.Id ~= 0 then
+			map[pass.Id] = key
+		end
+	end
+	return map
+end
+
+function StoreService.HasPass(player: Player, key: string): boolean
+	local data = DataService.Get(player)
+	return data ~= nil and data.Passes[key] == true
+end
+
+local function ownsPass(player: Player, passId: number): boolean?
+	local ok, owned = pcall(function()
+		return MarketplaceService:UserOwnsGamePassAsync(player.UserId, passId)
+	end)
+	if ok then
+		return owned == true
+	end
+	return nil -- unknown (Roblox unreachable): keep the cached value
+end
+
+-- verified = Roblox confirmed ownership (UserOwnsGamePassAsync).
+local function setPass(player: Player, key: string, owned: boolean, verified: boolean): boolean
+	local changed = false
+	DataService.Update(player, function(d)
+		d.PassesUnverified = d.PassesUnverified or {}
+		if (d.Passes[key] == true) ~= owned then
+			changed = true
+		end
+		d.Passes[key] = owned or nil
+		d.PassesUnverified[key] = if owned and not verified then true else nil
+	end)
+	if changed then
+		StoreService.PassChanged:Fire(player, key, owned)
+		if key == "VIP" then
+			ShopService.Sanitize(player)
+		end
+	end
+	return changed
+end
+
+function StoreService.IsVerified(player: Player, key: string): boolean
+	local data = DataService.Get(player)
+	return data ~= nil and data.Passes[key] == true and not (data.PassesUnverified and data.PassesUnverified[key])
+end
+
+-- On join: Roblox's answer is fresh when a player enters a server.
+function StoreService.RefreshPasses(player: Player)
+	for passId, key in pairs(passKeys()) do
+		local owned = ownsPass(player, passId)
+		if owned ~= nil then
+			setPass(player, key, owned, true)
+		elseif StoreService.HasPass(player, key) and not StoreService.IsVerified(player, key) then
+			-- Roblox unreachable: keep confirmed passes, but an unconfirmed one
+			-- waits until Roblox can confirm it.
+			setPass(player, key, false, false)
+		end
+	end
+end
+
+-- ===== Developer products =====
+function StoreService.ProcessReceipt(receipt)
+	local player = nil
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.UserId == receipt.PlayerId then
+			player = p
+		end
+	end
+	if not player then
+		return Enum.ProductPurchaseDecision.NotProcessedYet -- they left; Roblox retries next time
+	end
+	local product = productFor(receipt.ProductId)
+	if not product then
+		warn("[StoreService] Receipt for an unknown product id " .. tostring(receipt.ProductId))
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	local data = DataService.WaitForData(player, 15)
+	if not data then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	if table.find(data.ProcessedReceipts, receipt.PurchaseId) then
+		return Enum.ProductPurchaseDecision.PurchaseGranted -- already granted earlier
+	end
+	DataService.Update(player, function(d)
+		d.Coins += product.Coins
+		d.Lifetime.CoinsBought += product.Coins
+		table.insert(d.ProcessedReceipts, receipt.PurchaseId)
+		TableUtil.TrimArray(d.ProcessedReceipts, Config.MaxProcessedReceipts)
+	end)
+	if not DataService.SaveNow(player) then
+		-- Keep the in-memory grant (the receipt id blocks a double grant if
+		-- Roblox retries in this session), but don't confirm until it's saved.
+		warn("[StoreService] Couldn't save after a purchase; Roblox will retry")
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	StoreService.CoinsPurchased:Fire(player, product.Coins)
+	Net.Fire("Notify", player, { Title = product.Icon .. " Thank you!", Text = ("+%d Coins added to your account."):format(product.Coins), Kind = "Important" })
+	return Enum.ProductPurchaseDecision.PurchaseGranted
+end
+
+-- ===== Store info for the client =====
+local infoCache = {}
+local function productInfo(id: number, infoType)
+	local cached = infoCache[id]
+	if cached and os.clock() - cached.Time < 300 then
+		return cached.Info
+	end
+	local ok, info = pcall(function()
+		return MarketplaceService:GetProductInfo(id, infoType)
+	end)
+	if ok and type(info) == "table" then
+		infoCache[id] = { Info = info, Time = os.clock() }
+		return info
+	end
+	return nil
+end
+
+function StoreService.Info(player: Player)
+	local products, passes = {}, {}
+	for _, product in ipairs(Monetisation.Products) do
+		if product.Id ~= 0 then
+			local info = productInfo(product.Id, Enum.InfoType.Product)
+			if info and info.PriceInRobux then
+				table.insert(products, { Key = product.Key, Id = product.Id, Coins = product.Coins, Name = product.Name, Icon = product.Icon, Price = info.PriceInRobux })
+			end
+		end
+	end
+	for _, key in ipairs(Monetisation.PassOrder) do
+		local pass = Monetisation.Passes[key]
+		if pass.Id ~= 0 then
+			local info = productInfo(pass.Id, Enum.InfoType.GamePass)
+			if info and info.PriceInRobux then
+				table.insert(passes, { Key = key, Id = pass.Id, Name = pass.Name, Icon = pass.Icon, Description = pass.Description, Price = info.PriceInRobux, Owned = StoreService.HasPass(player, key) })
+			end
+		end
+	end
+	return { Products = products, Passes = passes }
+end
+
+function StoreService.Init()
+	DataService.ProfileLoaded:Connect(function(player)
+		task.spawn(StoreService.RefreshPasses, player)
+	end)
+end
+
+function StoreService.Start()
+	MarketplaceService.ProcessReceipt = StoreService.ProcessReceipt
+	-- Fired on the server by Roblox's purchase prompt (not one of our remotes).
+	local checking = {} -- [player] = { [passId] = true } while confirming
+	Players.PlayerRemoving:Connect(function(player)
+		checking[player] = nil
+	end)
+	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, passId, purchased)
+		local key = passKeys()[passId]
+		if not key or not purchased or not DataService.Get(player) then
+			return
+		end
+		if StoreService.IsVerified(player, key) then
+			return -- already confirmed (repeat events change nothing)
+		end
+		local pass = Monetisation.Passes[key]
+		if setPass(player, key, true, false) then
+			Net.Fire("Notify", player, { Title = pass.Icon .. " " .. pass.Name .. " unlocked!", Text = "Thank you for supporting the game.", Kind = "Important" })
+		end
+		checking[player] = checking[player] or {}
+		if checking[player][passId] then
+			return -- a confirmation is already running
+		end
+		checking[player][passId] = true
+		-- Confirm with Roblox when its cache allows; otherwise on the next join.
+		for attempt = 1, 3 do
+			if player.Parent == nil then
+				break
+			end
+			if ownsPass(player, passId) then
+				setPass(player, key, true, true)
+				break
+			end
+			task.wait(attempt * 2)
+		end
+		if checking[player] then
+			checking[player][passId] = nil
+		end
+	end)
+	Net.Handle("GetStoreInfo", function(player)
+		return true, StoreService.Info(player)
+	end)
+end
+
+return StoreService
+]]></string>
+          </Properties>
+        </Item>
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="59">
+  <Item class="StarterPlayer" referent="66">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="60">
+    <Item class="StarterPlayerScripts" referent="67">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="61">
+      <Item class="Folder" referent="68">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="Folder" referent="62">
+        <Item class="Folder" referent="69">
           <Properties>
             <string name="Name">Controllers</string>
           </Properties>
-          <Item class="ModuleScript" referent="63">
+          <Item class="ModuleScript" referent="70">
             <Properties>
               <string name="Name">AudioController</string>
               <string name="Source"><![CDATA[--[[
@@ -9516,7 +10472,7 @@ return AudioController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="64">
+          <Item class="ModuleScript" referent="71">
             <Properties>
               <string name="Name">ControlsController</string>
               <string name="Source"><![CDATA[--[[
@@ -9566,7 +10522,7 @@ return ControlsController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="65">
+          <Item class="ModuleScript" referent="72">
             <Properties>
               <string name="Name">DataController</string>
               <string name="Source"><![CDATA[--[[
@@ -9656,7 +10612,7 @@ return DataController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="66">
+          <Item class="ModuleScript" referent="73">
             <Properties>
               <string name="Name">DecisionController</string>
               <string name="Source"><![CDATA[--[[
@@ -10629,7 +11585,7 @@ return DecisionController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="67">
+          <Item class="ModuleScript" referent="74">
             <Properties>
               <string name="Name">FinanceController</string>
               <string name="Source"><![CDATA[--[[
@@ -10842,7 +11798,7 @@ return FinanceController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="68">
+          <Item class="ModuleScript" referent="75">
             <Properties>
               <string name="Name">FriendsController</string>
               <string name="Source"><![CDATA[--[[
@@ -10872,6 +11828,7 @@ local HUDController = require(script.Parent.HUDController)
 local NotificationController = require(script.Parent.NotificationController)
 local PartyController = require(script.Parent.PartyController)
 local FutureController = require(script.Parent.FutureController)
+local Avatar = require(UILib.Avatar)
 
 local FriendsController = {}
 FriendsController.Priority = 50
@@ -10901,7 +11858,7 @@ end
 local function row(parent, order: number, title: string, subtitle: string, buttons)
 	local frameRow = Create("Frame", { Name = "Row" .. order, BackgroundColor3 = Theme.Color.SurfaceHigh, BackgroundTransparency = 0.15, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order, Parent = parent }, { Create.Corner(Theme.RadiusSmall), Create.Padding(10, 14) })
 	Create.List(Enum.FillDirection.Vertical, 6).Parent = frameRow
-	Create.Label({ Text = title, FontFace = Theme.Font.Heavy, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = frameRow })
+	Create.Label({ Name = "Title", Text = title, RichText = true, FontFace = Theme.Font.Heavy, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = frameRow })
 	if subtitle ~= "" then
 		Create.Label({ Text = subtitle, TextSize = Theme.TextSize.Small, TextColor3 = Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = frameRow })
 	end
@@ -10996,7 +11953,7 @@ function render()
 					end })
 				end
 			end
-			row(column, 2 + i, (if m.IsLeader then "👑 " else "") .. m.DisplayName .. (if m.UserId == me.UserId then " (you)" else ""), memberSummary(m), buttons)
+			row(column, 2 + i, (if m.IsLeader then "👑 " else "") .. Avatar.Line(m.DisplayName, m.Style) .. (if m.UserId == me.UserId then " (you)" else ""), memberSummary(m), buttons)
 		end
 		local eventText = if state.EventActive then "Deciding…" elseif state.EventCooldown > 0 then ("Group decision (%ds)"):format(state.EventCooldown) else "Group decision"
 		row(column, 10, "Do something together", "Start a group decision for everyone to vote on, or watch everyone's futures in a Group Life Reveal.", {
@@ -11020,7 +11977,7 @@ function render()
 			others += 1
 			local already = inCircle(p.UserId)
 			local full = state and #state.Members >= state.MaxMembers
-			row(column, 20 + i, p.DisplayName or p.Name, if already then "In your circle" else "", {
+			row(column, 20 + i, Avatar.NameRich(p.DisplayName or p.Name, nil), if already then "In your circle" else "", {
 				{ Name = "Invite" .. p.UserId, Text = if already then "In circle" else "Invite", Icon = "🤝", Style = "Primary", Width = 160, Disabled = already or full, OnClick = function()
 					local ok = act("PartyInvite", p.UserId)
 					if ok then
@@ -11118,7 +12075,7 @@ return FriendsController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="69">
+          <Item class="ModuleScript" referent="76">
             <Properties>
               <string name="Name">FutureController</string>
               <string name="Source"><![CDATA[--[[
@@ -11149,6 +12106,7 @@ local DataController = require(script.Parent.DataController)
 local UIController = require(script.Parent.UIController)
 local HUDController = require(script.Parent.HUDController)
 local NotificationController = require(script.Parent.NotificationController)
+local Avatar = require(UILib.Avatar)
 
 local FutureController = {}
 FutureController.Priority = 47
@@ -11297,7 +12255,7 @@ function renderCompare()
 			others += 1
 			local panel = Components.Panel({ Name = "Player" .. c.UserId, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Padding = 14, LayoutOrder = i, Parent = scroll, Color = Theme.Color.SurfaceHigh })
 			Create.List(Enum.FillDirection.Vertical, 4).Parent = panel
-			Create.Label({ Text = c.DisplayName .. (if c.IsFriend then "  · 🤝 Friend" else ""), FontFace = Theme.Font.Heavy, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = panel })
+			Create.Label({ Text = Avatar.Line(c.DisplayName, c.Style) .. (if c.IsFriend then "  · 🤝 Friend" else ""), RichText = true, FontFace = Theme.Font.Heavy, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = panel })
 			if c.Hidden then
 				Create.Label({ Text = "🔒 Keeps their future private.", TextColor3 = Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = panel })
 			elseif c.NoLife then
@@ -11387,7 +12345,7 @@ return FutureController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="70">
+          <Item class="ModuleScript" referent="77">
             <Properties>
               <string name="Name">GraphicsController</string>
               <string name="Source"><![CDATA[--[[
@@ -11451,7 +12409,7 @@ return GraphicsController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="71">
+          <Item class="ModuleScript" referent="78">
             <Properties>
               <string name="Name">HUDController</string>
               <string name="Source"><![CDATA[--[[
@@ -11486,6 +12444,8 @@ local Components = require(UILib.Components)
 
 local DataController = require(script.Parent.DataController)
 local UIController = require(script.Parent.UIController)
+local StyleController = require(script.Parent.StyleController)
+local Avatar = require(UILib.Avatar)
 
 local HUDController = {}
 HUDController.Priority = 40
@@ -11525,13 +12485,21 @@ function HUDController.Occupation(life): string
 	return "Unemployed"
 end
 
-local COMPACT_WIDTH = 1260
+-- One row needs room for: menu, identity, money, two bars, occupation and
+-- every action button; otherwise the HUD switches to two rows.
+local function actionBarWidth(): number
+	return #actions * 50 + math.max(0, #actions - 1) * 8
+end
+local function isCompact(): boolean
+	local needed = 50 + 220 + 140 + 120 + 120 + 250 + 14 * 6 + actionBarWidth() + 48
+	return UIController.GetVirtualSize().X < needed
+end
 local function hudHeight(): number
-	return if UIController.GetVirtualSize().X < COMPACT_WIDTH then 118 else 74
+	return if isCompact() then 118 else 74
 end
 
 local function actionBar(parent)
-	local width = #actions * 50 + math.max(0, #actions - 1) * 8
+	local width = actionBarWidth()
 	local bar = Create("Frame", { Name = "Actions", BackgroundTransparency = 1, Size = UDim2.fromOffset(width, 50), AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Parent = parent })
 	Create.List(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Right).Parent = bar
 	for i, action in ipairs(actions) do
@@ -11542,7 +12510,7 @@ end
 
 local function identityBlock(parent, width: number, order: number)
 	local frame = Create("Frame", { Name = "Identity", BackgroundTransparency = 1, Size = UDim2.fromOffset(width, 50), LayoutOrder = order, Parent = parent })
-	refs.Name = Create.Label({ Name = "Name", FontFace = Theme.Font.Heavy, TextSize = 22, Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false, Parent = frame })
+	refs.Name = Create.Label({ Name = "Name", RichText = true, FontFace = Theme.Font.Heavy, TextSize = 22, Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false, Parent = frame })
 	refs.Sub = Create.Label({ Name = "Sub", TextSize = Theme.TextSize.Small, TextColor3 = Theme.Color.TextDim, Size = UDim2.new(1, 0, 0, 22), Position = UDim2.fromOffset(0, 26), TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false, Parent = frame })
 	return frame
 end
@@ -11551,7 +12519,7 @@ local function render()
 	Create.Clear(hud, true)
 	refs = {}
 	local size = UIController.GetVirtualSize()
-	local compact = size.X < COMPACT_WIDTH
+	local compact = isCompact()
 	local height = hudHeight()
 
 	hud.Size = UDim2.new(1, -24, 0, height)
@@ -11584,7 +12552,7 @@ local function render()
 	if not compact then
 		local row = Create("Frame", { Name = "Row", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = hud })
 		Create.List(Enum.FillDirection.Horizontal, 14, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center).Parent = row
-		-- Widths budgeted for 1260+ virtual px: 50 + 220 + ~140 + 120 + 120 + ~250 + gaps + 224 (actions)
+		-- Widths budgeted in isCompact(): below that width the HUD uses two rows.
 		menuButton(row, 1)
 		identityBlock(row, 220, 2)
 		chip(row, "Money", 3)
@@ -11618,7 +12586,9 @@ local function update(animate: boolean?)
 		return
 	end
 	local stage = LifeStages.Get(life.Stage)
-	refs.Name.Text = life.Name
+	local style = StyleController.Get()
+	refs.Name.Text = style.Face .. " " .. Avatar.NameRich(life.Name, style)
+	refs.Name:SetAttribute("LifeName", life.Name)
 	refs.Sub.Text = ("Age %d · %s · %d/%d"):format(life.Age, stage.DisplayName, math.min(life.ScenarioIndex + 1, stage.ScenariosPerStage), stage.ScenariosPerStage)
 	refs.ProgressFill.BackgroundColor3 = stage.Color
 	local progress = UDim2.fromScale(life.ScenarioIndex / stage.ScenariosPerStage, 1)
@@ -11760,6 +12730,11 @@ function HUDController.Start()
 			update(true)
 		end
 	end)
+	StyleController.Changed:Connect(function()
+		if UIController.Current() == "Game" then
+			update(false)
+		end
+	end)
 	UIController.LayoutChanged:Connect(function()
 		if UIController.Current() == "Game" then
 			render()
@@ -11772,7 +12747,169 @@ return HUDController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="72">
+          <Item class="ModuleScript" referent="79">
+            <Properties>
+              <string name="Name">InventoryController</string>
+              <string name="Source"><![CDATA[--[[
+	InventoryController  (StarterPlayerScripts.Client.Controllers.InventoryController)
+	The 🎒 My Items screen (main menu): your look, what's equipped in every
+	slot (change or remove), and everything you own, ready to equip.
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Net = require(Shared.Net)
+local Catalog = require(Shared.Data.Catalog)
+local Format = require(Shared.Util.Format)
+
+local UILib = script.Parent.Parent:WaitForChild("UILib")
+local Theme = require(UILib.Theme)
+local Create = require(UILib.Create)
+local Components = require(UILib.Components)
+local Layout = require(UILib.Layout)
+local Avatar = require(UILib.Avatar)
+
+local DataController = require(script.Parent.DataController)
+local UIController = require(script.Parent.UIController)
+local NotificationController = require(script.Parent.NotificationController)
+local StyleController = require(script.Parent.StyleController)
+local ShopController = require(script.Parent.ShopController)
+
+local InventoryController = {}
+InventoryController.Priority = 52
+
+local frame: CanvasGroup
+local busy = false
+
+local ERRORS = {
+	NotOwned = "You don't own that item.",
+	NeedVIP = "VIP items need the VIP pass to wear.",
+	NoSuchItem = "That item isn't available any more.",
+	BadSlot = "That slot doesn't exist.",
+	RateLimited = "Slow down a moment.",
+}
+
+local function act(remote: string, arg)
+	if busy then
+		return
+	end
+	busy = true
+	local ok, result = Net.Invoke(remote, arg)
+	busy = false
+	if not ok then
+		NotificationController.Notify({ Title = "🎒 My Items", Text = ERRORS[result] or tostring(result), Kind = "Warning" })
+	end
+end
+
+local function heading(parent, text: string, order: number)
+	Create.Label({ Text = text, TextSize = Theme.TextSize.Tiny, FontFace = Theme.Font.Heavy, TextColor3 = Theme.Color.Primary, Size = UDim2.new(1, 0, 0, 28), TextYAlignment = Enum.TextYAlignment.Bottom, LayoutOrder = order, Parent = parent })
+end
+
+local function render()
+	Create.Clear(frame, true)
+	Layout.Header(frame, "My Items", function()
+		UIController.Back()
+	end)
+	local scroll = Layout.Scroll(frame)
+	local width = math.min(820, UIController.GetVirtualSize().X - 32)
+	local column = Layout.Column(scroll, width)
+	local data = DataController.Get()
+	if not data then
+		return
+	end
+	local style = StyleController.Get()
+	local life = DataController.GetActiveLife()
+	local name = if life then life.Name else (Players.LocalPlayer.DisplayName or "You")
+
+	-- Your look
+	local look = Components.Panel({ Name = "Look", Size = UDim2.fromOffset(width, 120), Padding = 14, LayoutOrder = 1, Parent = column })
+	Avatar.Badge({ Style = style, Size = 90, Parent = look })
+	Create.Label({ Name = "LookName", Text = Avatar.Line(name, style), RichText = true, FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H3, Position = UDim2.fromOffset(106, 8), Size = UDim2.new(1, -110, 0, 30), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, Parent = look })
+	local owned = 0
+	for _ in pairs(data.Inventory.Owned) do
+		owned += 1
+	end
+	Create.Label({ Text = ("🪙 %s Coins · %d of %d items owned"):format(Format.Commas(data.Coins), owned, #Catalog.Items), TextColor3 = Theme.Color.TextDim, Position = UDim2.fromOffset(106, 44), Size = UDim2.new(1, -110, 0, 24), Parent = look })
+	Components.Button({ Name = "OpenShop", Text = "Shop", Icon = "🛍️", Style = "Accent", Size = UDim2.fromOffset(140, 40), Position = UDim2.fromOffset(106, 72), TextSize = 17, Parent = look, OnClick = function()
+		ShopController.Open()
+	end })
+
+	-- Loadout
+	heading(column, "EQUIPPED", 2)
+	for i, slotId in ipairs(Catalog.SlotOrder) do
+		local slot = Catalog.Slots[slotId]
+		local item = Catalog.Get(data.Inventory.Equipped[slotId])
+		local row = Create("Frame", { Name = "Slot_" .. slotId, BackgroundColor3 = Theme.Color.SurfaceHigh, BackgroundTransparency = 0.2, Size = UDim2.fromOffset(width, 52), LayoutOrder = 2 + i, Parent = column }, { Create.Corner(Theme.RadiusSmall), Create.Padding(4, 12) })
+		Create.Label({ Text = slot.Name, TextColor3 = Theme.Color.TextDim, TextSize = Theme.TextSize.Small, Size = UDim2.new(0.28, 0, 1, 0), TextWrapped = false, Parent = row })
+		Create.Label({ Name = "Equipped", Text = if item then item.Icon .. " " .. item.Name else "Default", FontFace = Theme.Font.Bold, Position = UDim2.fromScale(0.28, 0), Size = UDim2.new(0.4, 0, 1, 0), TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, Parent = row })
+		local buttons = Create("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.fromScale(1, 0.5), Size = UDim2.fromOffset(230, 40), Parent = row })
+		Create.List(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Center).Parent = buttons
+		Components.Button({ Name = "Change", Text = "Change", Style = "Secondary", Size = UDim2.fromOffset(110, 38), TextSize = 16, LayoutOrder = 1, Parent = buttons, OnClick = function()
+			ShopController.Open(slot.Category)
+		end })
+		if item then
+			Components.Button({ Name = "Remove", Text = "Remove", Style = "Ghost", Size = UDim2.fromOffset(110, 38), TextSize = 16, LayoutOrder = 2, Parent = buttons, OnClick = function()
+				act("ShopUnequip", slotId)
+			end })
+		end
+	end
+
+	-- Owned items
+	heading(column, "YOUR ITEMS", 30)
+	local grid = Create("Frame", { Name = "Owned", BackgroundTransparency = 1, Size = UDim2.fromOffset(width, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 31, Parent = column })
+	local columns = if UIController.IsNarrow() then 2 else 4
+	Create("UIGridLayout", { CellSize = UDim2.fromOffset(math.floor((width - 10 * (columns - 1)) / columns), 130), CellPadding = UDim2.fromOffset(10, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+	local list = {}
+	for _, item in ipairs(Catalog.Items) do
+		if data.Inventory.Owned[item.Id] then
+			table.insert(list, item)
+		end
+	end
+	for i, item in ipairs(list) do
+		local isOn = data.Inventory.Equipped[item.Slot] == item.Id
+		local card = Create("Frame", { Name = "Own_" .. item.Id, BackgroundColor3 = Theme.Color.Surface, LayoutOrder = i, Parent = grid }, { Create.Corner(Theme.RadiusSmall), Create.Stroke(if isOn then Theme.Color.Positive else Theme.Color.Stroke, if isOn then 2.5 else 1.5, if isOn then 0 else 0.4), Create.Padding(8) })
+		Create.Label({ Text = item.Icon, TextScaled = true, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 44), Parent = card })
+		Create.Label({ Text = item.Name, TextSize = Theme.TextSize.Tiny, FontFace = Theme.Font.Bold, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 46), Size = UDim2.new(1, 0, 0, 30), Parent = card })
+		if isOn then
+			Create.Label({ Name = "On", Text = "✅", TextSize = 16, TextXAlignment = Enum.TextXAlignment.Right, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(24, 20), Parent = card })
+		end
+		Components.Button({ Name = "Toggle", Text = if isOn then "Unequip" else "Equip", Style = if isOn then "Secondary" else "Primary", Size = UDim2.new(1, 0, 0, 34), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), TextSize = 15, Parent = card, OnClick = function()
+			if isOn then
+				act("ShopUnequip", item.Slot)
+			else
+				act("ShopEquip", item.Id)
+			end
+		end })
+	end
+	if #list == 0 then
+		Create.Label({ Text = "You don't own any items yet. Visit the Shop to get your first one!", TextColor3 = Theme.Color.TextDim, Size = UDim2.fromOffset(width, 40), LayoutOrder = 1, Parent = grid })
+	end
+end
+
+function InventoryController.Init()
+	frame = UIController.NewScreen("Inventory", { Back = true, OnOpen = render })
+end
+
+function InventoryController.Start()
+	DataController.Changed:Connect(function()
+		if UIController.Current() == "Inventory" then
+			render()
+		end
+	end)
+	UIController.LayoutChanged:Connect(function()
+		if UIController.Current() == "Inventory" then
+			render()
+		end
+	end)
+end
+
+return InventoryController
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="80">
             <Properties>
               <string name="Name">LifeHistoryController</string>
               <string name="Source"><![CDATA[--[[
@@ -12039,7 +13176,7 @@ return LifeHistoryController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="73">
+          <Item class="ModuleScript" referent="81">
             <Properties>
               <string name="Name">LifestyleController</string>
               <string name="Source"><![CDATA[--[[
@@ -12175,7 +13312,7 @@ return LifestyleController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="74">
+          <Item class="ModuleScript" referent="82">
             <Properties>
               <string name="Name">LoadingController</string>
               <string name="Source"><![CDATA[--[[
@@ -12314,7 +13451,7 @@ return LoadingController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="75">
+          <Item class="ModuleScript" referent="83">
             <Properties>
               <string name="Name">MenuController</string>
               <string name="Source"><![CDATA[--[[
@@ -12348,6 +13485,8 @@ local Layout = require(UILib.Layout)
 local DataController = require(script.Parent.DataController)
 local UIController = require(script.Parent.UIController)
 local NotificationController = require(script.Parent.NotificationController)
+local StyleController = require(script.Parent.StyleController)
+local Avatar = require(UILib.Avatar)
 
 local MenuController = {}
 MenuController.Priority = 30
@@ -12446,6 +13585,7 @@ local MENU_ITEMS = {
 		UIController.Show("SlotSelect", "New")
 	end },
 	{ Text = "Shop", Icon = "🛍️", Screen = "Shop" },
+	{ Text = "My Items", Icon = "🎒", Screen = "Inventory" },
 	{ Text = "Achievements", Icon = "🏆", Screen = "Achievements" },
 	{ Text = "Leaderboards", Icon = "📈", Screen = "Leaderboards" },
 	{ Text = "Life History", Icon = "📜", Screen = "LifeHistory" },
@@ -12491,16 +13631,24 @@ local function buildLifeCard(parent, width: number, life, layoutOrder: number)
 		})
 		return card
 	end
+	local style = StyleController.Get()
+	local nameRow = Create("Frame", { Name = "NameRow", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64), LayoutOrder = 2, Parent = card })
+	Avatar.Badge({ Style = style, Size = 60, Parent = nameRow })
 	Create.Label({
-		Text = life.Name,
+		Name = "LifeName",
+		Text = Avatar.NameRich(life.Name, style),
+		RichText = true,
 		FontFace = Theme.Font.Heavy,
 		TextSize = Theme.TextSize.H1,
-		Size = UDim2.new(1, 0, 0, 44),
+		Position = UDim2.fromOffset(74, 0),
+		Size = UDim2.new(1, -74, 0, 40),
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextWrapped = false,
-		LayoutOrder = 2,
-		Parent = card,
+		Parent = nameRow,
 	})
+	if style.Title then
+		Create.Label({ Text = style.Title, TextColor3 = Theme.Color.Gold, TextSize = Theme.TextSize.Small, Position = UDim2.fromOffset(74, 40), Size = UDim2.new(1, -74, 0, 22), Parent = nameRow })
+	end
 	Create.Label({ Text = lifeSummary(life), TextColor3 = Theme.Color.TextDim, LayoutOrder = 3, Parent = card })
 	local stage = LifeStages.Get(life.Stage)
 	local progress = Components.StatBar({
@@ -12950,13 +14098,18 @@ function MenuController.Start()
 			renderSlots()
 		end
 	end)
+	StyleController.Changed:Connect(function()
+		if UIController.Current() == "Menu" then
+			renderMenu()
+		end
+	end)
 end
 
 return MenuController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="76">
+          <Item class="ModuleScript" referent="84">
             <Properties>
               <string name="Name">NotificationController</string>
               <string name="Source"><![CDATA[--[[
@@ -13077,7 +14230,7 @@ return NotificationController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="77">
+          <Item class="ModuleScript" referent="85">
             <Properties>
               <string name="Name">PartyController</string>
               <string name="Source"><![CDATA[--[[
@@ -13452,7 +14605,7 @@ return PartyController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="78">
+          <Item class="ModuleScript" referent="86">
             <Properties>
               <string name="Name">PeopleController</string>
               <string name="Source"><![CDATA[--[[
@@ -13666,7 +14819,7 @@ return PeopleController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="79">
+          <Item class="ModuleScript" referent="87">
             <Properties>
               <string name="Name">RevealController</string>
               <string name="Source"><![CDATA[--[[
@@ -13701,6 +14854,8 @@ local Components = require(UILib.Components)
 
 local UIController = require(script.Parent.UIController)
 local AudioController = require(script.Parent.AudioController)
+local StyleController = require(script.Parent.StyleController)
+local Avatar = require(UILib.Avatar)
 
 local RevealController = {}
 RevealController.Priority = 46
@@ -13922,8 +15077,49 @@ local SCENES = {
 	Lonely = { Sky = { Color3.fromRGB(20, 25, 50), Color3.fromRGB(60, 70, 110) }, Hero = "🪑", Props = { "🌙", "🕯️", "📞" }, Sparkle = "✦", Caption = "A quiet house… but people are waiting to know you." },
 }
 
+-- Your shop cosmetics star in your own future: equipped home, car and pet
+-- replace the defaults in the scenes where they belong.
+local function personalise(archetype: string, scene)
+	local style = StyleController.Get()
+	local result = table.clone(scene)
+	result.Props = table.clone(scene.Props)
+	if archetype == "Luxury" then
+		result.Hero = style.House or scene.Hero
+		result.Props[1] = style.Car or scene.Props[1]
+		result.Props[3] = style.Pet or scene.Props[3]
+	elseif archetype == "Family" then
+		result.Hero = style.House or scene.Hero
+		result.Props[2] = style.Pet or scene.Props[2]
+	elseif archetype == "Career" then
+		result.Props[1] = style.Car or scene.Props[1]
+	elseif archetype == "Content" or archetype == "Health" then
+		result.Props[2] = style.Pet or scene.Props[2]
+	end
+	return result
+end
+
+-- Falling glyphs from an equipped Reveal effect (shop cosmetic). They live in
+-- their own layer above the steps, so they keep falling into the next step
+-- (e.g. when the player skips straight to the end card).
+local function effectRain(count: number)
+	local glyphs = StyleController.Get().RevealGlyphs
+	if not glyphs or Anim.Reduced then
+		return
+	end
+	local layer = root:FindFirstChild("Fx") or Create("Frame", { Name = "Fx", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = root })
+	local rng = Random.new()
+	for i = 1, count do
+		local g = Create.Label({ Name = "RevealFx" .. i, Text = glyphs[(i - 1) % #glyphs + 1], TextSize = rng:NextInteger(24, 40), TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromOffset(44, 44), Position = UDim2.new(rng:NextNumber(0, 0.97), 0, -0.1 - rng:NextNumber(0, 0.4), 0), Parent = layer })
+		local duration = rng:NextNumber(2, 3.5)
+		Anim.Tween(g, { Position = UDim2.new(g.Position.X.Scale, 0, 1.1, 0), Rotation = rng:NextInteger(-90, 90) }, duration, Enum.EasingStyle.Linear)
+		task.delay(duration + 0.1, function()
+			g:Destroy()
+		end)
+	end
+end
+
 local function sceneStep(archetype: string)
-	local scene = SCENES[archetype] or SCENES.Content
+	local scene = personalise(archetype, SCENES[archetype] or SCENES.Content)
 	local step = newStep()
 	local s = size()
 	local frame = Create("CanvasGroup", { Name = "Scene", BackgroundColor3 = Theme.Color.White, Size = UDim2.fromScale(1, 1), Parent = step }, {
@@ -14055,6 +15251,10 @@ function RevealController.PlayStage(reveal)
 	Create.Gradient(Theme.Gradient.Title).Parent = title
 	label(col, { Text = ("%s is over. You are %d."):format(reveal.StageName, reveal.Age), TextSize = Theme.TextSize.H3, TextColor3 = Theme.Color.TextDim, LayoutOrder = 2 })
 	Anim.Pop(title, 0.6, 0.9)
+	effectRain(18)
+	if reveal.Coins and reveal.Coins > 0 then
+		label(col, { Name = "RevealCoins", Text = ("🪙 +%d coins%s"):format(reveal.Coins, if reveal.Boosted then "  (2× Coins)" else ""), FontFace = Theme.Font.Heavy, TextColor3 = Theme.Color.Gold, LayoutOrder = 3 })
+	end
 	pause(1.8)
 
 	-- 2. Who you became
@@ -14294,10 +15494,11 @@ function RevealController.PlayFinal(entry, options)
 	Create.Gradient(Theme.Gradient.Title).Parent = endingTitle
 	label(c8, { Text = entry.Ending.Line, TextSize = Theme.TextSize.H3, TextColor3 = Theme.Color.TextDim, LayoutOrder = 3 })
 	if not options.Replay then
-		label(c8, { Text = ("🪙 +%d coins"):format(entry.Coins or 0), FontFace = Theme.Font.Heavy, TextColor3 = Theme.Color.Gold, LayoutOrder = 4 })
+		label(c8, { Name = "RevealCoins", Text = ("🪙 +%d coins%s"):format(entry.Coins or 0, if entry.Boosted then "  (2× Coins)" else ""), FontFace = Theme.Font.Heavy, TextColor3 = Theme.Color.Gold, LayoutOrder = 4 })
 	end
 	Anim.Pop(icon, 0.3, 1)
 	Anim.Pop(endingTitle, 0.6, 0.9)
+	effectRain(26)
 	pause(2.5)
 
 	local result = endCard("What if you had chosen differently?", "Every life is a different story. Would yours have turned out better?", {
@@ -14337,7 +15538,7 @@ function RevealController.PlayGroup(payload)
 		end
 		local s2 = newStep()
 		local c2 = column(s2, width)
-		label(c2, { Text = entry.DisplayName .. (if entry.IsYou then " (you)" else ""), FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H1, LayoutOrder = 1 })
+		label(c2, { Text = Avatar.Line(entry.DisplayName, entry.Style) .. (if entry.IsYou then " (you)" else ""), RichText = true, FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H1, LayoutOrder = 1 })
 		if entry.Hidden or not entry.Card then
 			label(c2, { Text = if entry.NoLife then "Between lives right now." else "🔒 Keeps their future private.", TextColor3 = Theme.Color.TextDim, TextSize = Theme.TextSize.H3, LayoutOrder = 2 })
 			pause(1.2)
@@ -14405,7 +15606,7 @@ return RevealController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="80">
+          <Item class="ModuleScript" referent="88">
             <Properties>
               <string name="Name">SettingsController</string>
               <string name="Source"><![CDATA[--[[
@@ -14565,7 +15766,7 @@ return SettingsController
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="81">
+          <Item class="ModuleScript" referent="89">
             <Properties>
               <string name="Name">SettingsMenu</string>
               <string name="Source"><![CDATA[--[[
@@ -14727,7 +15928,518 @@ return SettingsMenu
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="82">
+          <Item class="ModuleScript" referent="90">
+            <Properties>
+              <string name="Name">ShopController</string>
+              <string name="Source"><![CDATA[--[[
+	ShopController  (StarterPlayerScripts.Client.Controllers.ShopController)
+	The 🛍️ Shop screen (main menu → Shop):
+	  • search box and category tabs (All + 10 categories)
+	  • item cards with icon, rarity, price / Owned / Equipped / VIP
+	  • a preview of each item ON YOUR LOOK before you buy (avatar, home &
+	    car scene, name tag, theme swatch, falling reveal effect...)
+	  • purchase confirmation, then buy, equip or unequip
+	  • 🪙 Get Coins: real Robux coin packs and passes (only shown when the
+	    game has them set up; prices come from Roblox)
+	Everything is cosmetic. The server validates every purchase (ShopService).
+]]
+
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Net = require(Shared.Net)
+local Catalog = require(Shared.Data.Catalog)
+local Format = require(Shared.Util.Format)
+
+local UILib = script.Parent.Parent:WaitForChild("UILib")
+local Theme = require(UILib.Theme)
+local Create = require(UILib.Create)
+local Anim = require(UILib.Anim)
+local Components = require(UILib.Components)
+local Layout = require(UILib.Layout)
+local Avatar = require(UILib.Avatar)
+
+local DataController = require(script.Parent.DataController)
+local UIController = require(script.Parent.UIController)
+local NotificationController = require(script.Parent.NotificationController)
+local StyleController = require(script.Parent.StyleController)
+
+local ShopController = {}
+ShopController.Priority = 51
+
+local frame: CanvasGroup
+local category: string? = nil -- nil = All
+local query = ""
+local storeInfo = nil
+local busy = false
+local grid: Frame? = nil
+
+local ERRORS = {
+	NotEnoughCoins = "You don't have enough Coins yet. Play to earn more!",
+	AlreadyOwned = "You already own this.",
+	NeedVIP = "This is a VIP exclusive.",
+	NotOwned = "You don't own this yet.",
+	RateLimited = "Slow down a moment.",
+}
+
+local function data()
+	return DataController.Get()
+end
+
+local function owns(item): boolean
+	local d = data()
+	return d ~= nil and d.Inventory.Owned[item.Id] == true
+end
+
+local function equipped(item): boolean
+	local d = data()
+	return d ~= nil and d.Inventory.Equipped[item.Slot] == item.Id
+end
+
+local function hasVip(): boolean
+	local d = data()
+	return d ~= nil and d.Passes ~= nil and d.Passes.VIP == true
+end
+
+local function priceText(item): string
+	if equipped(item) then
+		return "✅ Equipped"
+	elseif owns(item) then
+		return "Owned"
+	elseif item.VipOnly then
+		return "⭐ VIP"
+	end
+	return "🪙 " .. Format.Commas(item.Price)
+end
+
+local renderGrid
+local openItem
+
+local function act(remote: string, arg, successText: string?)
+	if busy then
+		return false
+	end
+	busy = true
+	local ok, result = Net.Invoke(remote, arg)
+	busy = false
+	if ok then
+		if successText then
+			NotificationController.Notify({ Title = "🛍️ Shop", Text = successText, Kind = "Success", Duration = 2.5 })
+		end
+	else
+		NotificationController.Notify({ Title = "🛍️ Shop", Text = ERRORS[result] or tostring(result), Kind = "Warning" })
+	end
+	return ok
+end
+
+-- ===== Item preview =====
+local function previewBox(parent, item)
+	local box = Create("Frame", { Name = "Preview", BackgroundColor3 = Theme.Color.Background, Size = UDim2.new(1, 0, 0, 190), LayoutOrder = 1, ClipsDescendants = true, Parent = parent }, { Create.Corner(Theme.RadiusSmall) })
+	local style = StyleController.With(item)
+	local d = data()
+	local name = (d and DataController.GetActiveLife() and DataController.GetActiveLife().Name) or Players.LocalPlayer.DisplayName or "You"
+	local slot = item.Slot
+	if slot == "Backdrop" then
+		Create.Gradient(ColorSequence.new(Color3.fromHex(item.Colors[1]), Color3.fromHex(item.Colors[2])), 120).Parent = box
+		box.BackgroundColor3 = Theme.Color.White
+		Create.Label({ Text = "Your menus will look like this", FontFace = Theme.Font.Bold, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), Parent = box })
+	elseif slot == "House" or slot == "Apartment" or slot == "Car" or slot == "Furniture" then
+		local scene = (style.House or style.Apartment or "🏠") .. "  " .. (style.Car or "") .. "  " .. (style.Furniture or "")
+		Create.Label({ Text = item.Icon, TextScaled = true, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0.62, 0), Parent = box })
+		Create.Label({ Text = "Your life: " .. scene, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromScale(0, 0.66), Size = UDim2.new(1, 0, 0.3, 0), Parent = box })
+	elseif slot == "RevealEffect" then
+		Create.Label({ Text = "LIFE REVEAL", FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H2, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), Parent = box })
+		local rng = Random.new()
+		for i = 1, 14 do
+			local g = Create.Label({ Name = "Fx" .. i, Text = item.Glyphs[(i - 1) % #item.Glyphs + 1], TextSize = 28, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromOffset(32, 32), Position = UDim2.new(rng:NextNumber(0, 0.95), 0, -0.2, 0), Parent = box })
+			Anim.Tween(g, { Position = UDim2.new(g.Position.X.Scale, 0, 1.1, 0) }, rng:NextNumber(1.2, 2.4), Enum.EasingStyle.Linear)
+		end
+	elseif slot == "Aura" then
+		Create.Label({ Text = style.Face .. item.Icon, TextScaled = true, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0.6, 0), Parent = box })
+		Create.Label({ Text = "Surrounds your character in the world", TextColor3 = Theme.Color.TextDim, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromScale(0, 0.65), Size = UDim2.new(1, 0, 0.3, 0), Parent = box })
+	else
+		local badge = Avatar.Badge({ Style = style, Size = 120, Parent = box })
+		badge.AnchorPoint = Vector2.new(0.5, 0)
+		badge.Position = UDim2.new(0.5, 0, 0, 14)
+		Create.Label({ Name = "PreviewName", Text = Avatar.Line(name, style), RichText = true, FontFace = Theme.Font.Bold, TextXAlignment = Enum.TextXAlignment.Center, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, -6), Size = UDim2.new(1, 0, 0, 28), Parent = box })
+	end
+	return box
+end
+
+local function promptPass(key: string)
+	if not storeInfo then
+		return false
+	end
+	for _, pass in ipairs(storeInfo.Passes) do
+		if pass.Key == key and not pass.Owned then
+			pcall(function()
+				MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, pass.Id)
+			end)
+			return true
+		end
+	end
+	return false
+end
+
+function openItem(item)
+	local handle = UIController.OpenPanel({ Name = "ItemModal", Title = item.Icon .. "  " .. item.Name, Width = 620 })
+	handle.Subtitle.Text = ("%s · %s · %s"):format(item.Rarity, Catalog.Slots[item.Slot].Name, priceText(item))
+	local scroll = handle.Scroll
+	previewBox(scroll, item)
+	Create.Label({ Text = item.Description, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = scroll })
+	Create.Label({ Text = "✨ Cosmetic only: it never changes your life's choices, stats or money.", TextSize = Theme.TextSize.Tiny, TextColor3 = Theme.Color.TextFaint, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, Parent = scroll })
+	local d = data()
+	local function refresh()
+		task.wait(0.25)
+		if handle.IsOpen() then
+			openItem(item)
+		end
+		if UIController.Current() == "Shop" then
+			renderGrid()
+		end
+	end
+	local buttonProps = { Size = UDim2.new(1, 0, 0, 54), LayoutOrder = 10, Parent = scroll }
+	local function button(props)
+		for k, v in pairs(buttonProps) do
+			props[k] = props[k] or v
+		end
+		return Components.Button(props)
+	end
+	if owns(item) then
+		if equipped(item) then
+			button({ Name = "Unequip", Text = "Unequip", Icon = "↩️", Style = "Secondary", OnClick = function()
+				if act("ShopUnequip", item.Slot) then
+					refresh()
+				end
+			end })
+		elseif item.VipOnly and not hasVip() then
+			button({ Name = "NeedVip", Text = "Needs VIP to wear", Icon = "⭐", Style = "Secondary" })
+		else
+			button({ Name = "Equip", Text = "Equip", Icon = "✅", Style = "Primary", OnClick = function()
+				if act("ShopEquip", item.Id, item.Name .. " equipped!") then
+					refresh()
+				end
+			end })
+		end
+	elseif item.VipOnly then
+		if hasVip() then
+			button({ Name = "ClaimVip", Text = "Claim free with VIP", Icon = "⭐", Style = "Primary", OnClick = function()
+				if act("ShopBuy", item.Id, item.Name .. " is yours!") then
+					refresh()
+				end
+			end })
+		else
+			local available = storeInfo ~= nil and #storeInfo.Passes > 0
+			local vip = button({ Name = "GetVip", Text = if available then "Get VIP" else "VIP isn't available yet", Icon = "⭐", Style = if available then "Accent" else "Secondary", OnClick = function()
+				promptPass("VIP")
+			end })
+			if not available then
+				Components.SetDisabled(vip, true)
+			end
+		end
+	else
+		local coins = d and d.Coins or 0
+		local buy = button({ Name = "Buy", Text = ("Buy for %s Coins"):format(Format.Commas(item.Price)), Icon = "🪙", Style = "Primary", OnClick = function()
+			local confirmed = UIController.Confirm({
+				Title = "Buy " .. item.Name .. "?",
+				Text = ("It costs %s Coins. You have %s."):format(Format.Commas(item.Price), Format.Commas(coins)),
+				ConfirmText = "Buy",
+			})
+			if confirmed and act("ShopBuy", item.Id, item.Name .. " bought and equipped!") then
+				refresh()
+			end
+		end })
+		if coins < item.Price then
+			Components.SetDisabled(buy, true)
+			Create.Label({ Text = ("You need %s more Coins. Finish stages and lives to earn them."):format(Format.Commas(item.Price - coins)), TextColor3 = Theme.Color.Warning, TextSize = Theme.TextSize.Small, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 11, Parent = scroll })
+		end
+	end
+end
+
+-- ===== Get Coins (Robux) =====
+local function openCoins()
+	local handle = UIController.OpenPanel({ Name = "CoinsModal", Title = "🪙  Get Coins", Width = 640 })
+	handle.Subtitle.Text = "Purchases are handled securely by Roblox"
+	local scroll = handle.Scroll
+	local info = storeInfo or { Products = {}, Passes = {} }
+	local order = 0
+	for _, product in ipairs(info.Products) do
+		order += 1
+		Components.Button({ Name = "Product_" .. product.Key, Text = ("%s %s Coins · %s  (R$ %d)"):format(product.Icon, Format.Commas(product.Coins), product.Name, product.Price), Style = "Primary", Size = UDim2.new(1, 0, 0, 56), TextSize = 18, LayoutOrder = order, Parent = scroll, OnClick = function()
+			pcall(function()
+				MarketplaceService:PromptProductPurchase(Players.LocalPlayer, product.Id)
+			end)
+		end })
+	end
+	for _, pass in ipairs(info.Passes) do
+		order += 1
+		local panel = Components.Panel({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Padding = 14, LayoutOrder = 100 + order, Parent = scroll, Color = Theme.Color.SurfaceHigh })
+		Create.List(Enum.FillDirection.Vertical, 6).Parent = panel
+		Create.Label({ Text = pass.Icon .. "  " .. pass.Name, FontFace = Theme.Font.Heavy, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = panel })
+		Create.Label({ Text = pass.Description, TextSize = Theme.TextSize.Small, TextColor3 = Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = panel })
+		local passButton = Components.Button({ Name = "Pass_" .. pass.Key, Text = if pass.Owned then "Owned ✓" else ("Get it  (R$ %d)"):format(pass.Price), Style = if pass.Owned then "Secondary" else "Accent", Size = UDim2.fromOffset(220, 48), LayoutOrder = 3, Parent = panel, OnClick = function()
+			if not pass.Owned then
+				pcall(function()
+					MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, pass.Id)
+				end)
+			end
+		end })
+		if pass.Owned then
+			Components.SetDisabled(passButton, true)
+		end
+	end
+	if order == 0 then
+		Create.Label({ Text = "Coin packs and passes aren't set up for this game yet. You can earn Coins by playing: completing stages and lives, and joining group and city events.", TextColor3 = Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = scroll })
+	end
+	Create.Label({ Text = "Fair play: everything you can buy is cosmetic. Nothing affects your life's choices or outcomes.", TextSize = Theme.TextSize.Tiny, TextColor3 = Theme.Color.TextFaint, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 999, Parent = scroll })
+end
+
+-- ===== Grid =====
+function renderGrid()
+	if not grid then
+		return
+	end
+	Create.Clear(grid)
+	local narrow = UIController.IsNarrow()
+	local layout = grid:FindFirstChildOfClass("UIGridLayout")
+	local columns = if narrow then 2 else 5
+	local available = math.min(1100, UIController.GetVirtualSize().X - 40)
+	local cellWidth = math.floor((available - 12 * (columns - 1)) / columns)
+	if layout then
+		layout.CellSize = UDim2.fromOffset(cellWidth, 176)
+	end
+	local items = Catalog.Search(query, category)
+	table.sort(items, function(a, b)
+		local ra, rb = Catalog.Rarities[a.Rarity].Order, Catalog.Rarities[b.Rarity].Order
+		if ra ~= rb then
+			return ra < rb
+		end
+		return a.Price < b.Price
+	end)
+	for i, item in ipairs(items) do
+		local rarity = Catalog.Rarities[item.Rarity]
+		local card = Create("TextButton", {
+			Name = "Item_" .. item.Id,
+			Text = "",
+			AutoButtonColor = false,
+			Selectable = true,
+			BackgroundColor3 = Theme.Color.Surface,
+			LayoutOrder = i,
+			Parent = grid,
+		}, { Create.Corner(Theme.RadiusSmall), Create.Stroke(Color3.fromHex(rarity.Color), if equipped(item) then 3 else 1.5, if equipped(item) then 0 else 0.3), Create.Padding(10) })
+		Create.Label({ Text = item.Icon, TextScaled = true, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 72), Parent = card })
+		Create.Label({ Text = item.Name, FontFace = Theme.Font.Bold, TextSize = Theme.TextSize.Small, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 76), Size = UDim2.new(1, 0, 0, 40), Parent = card })
+		Create.Label({ Name = "Price", Text = priceText(item), FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.Small, TextColor3 = if owns(item) then Theme.Color.Positive else Color3.fromHex(rarity.Color), TextXAlignment = Enum.TextXAlignment.Center, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 24), Parent = card })
+		card.Activated:Connect(function()
+			if Components.OnClickSound then
+				Components.OnClickSound()
+			end
+			openItem(item)
+		end)
+	end
+	if #items == 0 then
+		Create.Label({ Text = "Nothing matches that search.", TextColor3 = Theme.Color.TextDim, Size = UDim2.fromOffset(300, 40), LayoutOrder = 1, Parent = grid })
+	end
+end
+
+local function render()
+	Create.Clear(frame, true)
+	local header = Layout.Header(frame, "Shop", function()
+		UIController.Back()
+	end)
+	local d = data()
+	local coinsChip = Components.Chip({ Text = "🪙 " .. Format.Commas(d and d.Coins or 0), Height = 44, TextSize = Theme.TextSize.Body, Parent = header })
+	coinsChip.Name = "Coins"
+	coinsChip.AnchorPoint = Vector2.new(1, 0.5)
+	coinsChip.Position = UDim2.fromScale(1, 0.5)
+
+	local scroll = Layout.Scroll(frame)
+	local width = math.min(1100, UIController.GetVirtualSize().X - 40)
+	local column = Layout.Column(scroll, width)
+
+	-- Search + get coins
+	local top = Create("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(width, 50), LayoutOrder = 1, Parent = column })
+	local hasStore = storeInfo ~= nil and (#storeInfo.Products > 0 or #storeInfo.Passes > 0)
+	local search = Create("TextBox", {
+		Name = "ShopSearch",
+		Text = query,
+		PlaceholderText = "🔎 Search items…",
+		PlaceholderColor3 = Theme.Color.TextFaint,
+		ClearTextOnFocus = false,
+		FontFace = Theme.Font.Medium,
+		TextSize = Theme.TextSize.Body,
+		TextColor3 = Theme.Color.Text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		BackgroundColor3 = Theme.Color.Background,
+		Size = UDim2.new(1, if hasStore then -200 else 0, 1, 0),
+		Parent = top,
+	}, { Create.Corner(Theme.RadiusSmall), Create.Stroke(), Create.Padding(0, 14) })
+	search:GetPropertyChangedSignal("Text"):Connect(function()
+		if search.Text ~= query then
+			query = search.Text
+			renderGrid()
+		end
+	end)
+	if hasStore then
+		Components.Button({ Name = "GetCoins", Text = "Get Coins", Icon = "🪙", Style = "Accent", Size = UDim2.fromOffset(188, 50), AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), TextSize = 18, Parent = top, OnClick = openCoins })
+	end
+
+	-- Category tabs
+	local tabs = Create("Frame", { Name = "Tabs", BackgroundTransparency = 1, Size = UDim2.fromOffset(width, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = column })
+	local tabList = Create.List(Enum.FillDirection.Horizontal, 8)
+	tabList.Wraps = true
+	tabList.Parent = tabs
+	local entries = { { Id = nil, Name = "All", Icon = "🛍️" } }
+	for _, c in ipairs(Catalog.Categories) do
+		table.insert(entries, c)
+	end
+	for i, c in ipairs(entries) do
+		local selected = category == c.Id
+		Components.Button({
+			Name = "Tab_" .. (c.Id or "All"),
+			Text = c.Name,
+			Icon = c.Icon,
+			Style = if selected then "Primary" else "Secondary",
+			Size = UDim2.fromOffset(if UIController.IsNarrow() then 150 else 160, 44),
+			TextSize = 16,
+			LayoutOrder = i,
+			Parent = tabs,
+			OnClick = function()
+				category = c.Id
+				render()
+			end,
+		})
+	end
+
+	grid = Create("Frame", { Name = "Grid", BackgroundTransparency = 1, Size = UDim2.fromOffset(width, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, Parent = column })
+	Create("UIGridLayout", { CellPadding = UDim2.fromOffset(12, 12), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+	renderGrid()
+	Create.Label({ Text = "Every item is cosmetic. Earn Coins by completing stages (+15) and lives, and by joining group and city events.", TextSize = Theme.TextSize.Tiny, TextColor3 = Theme.Color.TextFaint, TextXAlignment = Enum.TextXAlignment.Center, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 9, Parent = column })
+end
+
+function ShopController.Open(categoryId: string?)
+	category = categoryId
+	query = ""
+	UIController.Show("Shop")
+end
+
+function ShopController.Init()
+	frame = UIController.NewScreen("Shop", { Back = true, OnOpen = function()
+		render()
+		task.spawn(function()
+			local ok, info = Net.Invoke("GetStoreInfo")
+			if ok then
+				storeInfo = info
+				if UIController.Current() == "Shop" then
+					render()
+				end
+			end
+		end)
+	end })
+end
+
+function ShopController.Start()
+	DataController.Changed:Connect(function()
+		if UIController.Current() == "Shop" and grid then
+			-- Update prices/owned state and the coin balance without losing the search box.
+			renderGrid()
+			local header = frame:FindFirstChild("Header")
+			local chip = header and header:FindFirstChild("Coins")
+			local d = data()
+			if chip and d then
+				chip:FindFirstChild("Label").Text = "🪙 " .. Format.Commas(d.Coins)
+			end
+		end
+	end)
+	UIController.LayoutChanged:Connect(function()
+		if UIController.Current() == "Shop" then
+			render()
+		end
+	end)
+end
+
+return ShopController
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="91">
+            <Properties>
+              <string name="Name">StyleController</string>
+              <string name="Source"><![CDATA[--[[
+	StyleController  (StarterPlayerScripts.Client.Controllers.StyleController)
+	Your equipped cosmetics as a Style (Shared/Util/Style), kept up to date
+	from your data. Applies the menu theme (Backdrop) and lets other screens
+	(HUD, menu, reveals, shop previews) show your look.
+	StyleController.Get() -> style · StyleController.Changed(style)
+]]
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Signal = require(Shared.Util.Signal)
+local Style = require(Shared.Util.Style)
+
+local DataController = require(script.Parent.DataController)
+local UIController = require(script.Parent.UIController)
+
+local StyleController = {}
+StyleController.Priority = 7
+StyleController.Changed = Signal.new()
+
+local current = Style.Of({})
+local lastKey = ""
+
+function StyleController.Get()
+	return current
+end
+
+-- A preview of your look with one item swapped in (shop previews).
+function StyleController.With(item)
+	local data = DataController.Get()
+	local equipped = table.clone(if data then data.Inventory.Equipped else {})
+	if item then
+		equipped[item.Slot] = item.Id
+	end
+	return Style.Of(equipped)
+end
+
+local function refresh(data)
+	local equipped = data and data.Inventory and data.Inventory.Equipped or {}
+	local parts = {}
+	for slot, id in pairs(equipped) do
+		table.insert(parts, slot .. "=" .. tostring(id))
+	end
+	table.sort(parts)
+	local key = table.concat(parts, ",")
+	if key == lastKey then
+		return
+	end
+	lastKey = key
+	current = Style.Of(equipped)
+	if current.Backdrop then
+		UIController.SetBackdropColors(Color3.fromHex(current.Backdrop[1]), Color3.fromHex(current.Backdrop[2]))
+	else
+		UIController.SetBackdropColors(nil)
+	end
+	StyleController.Changed:Fire(current)
+end
+
+function StyleController.Init() end
+
+function StyleController.Start()
+	DataController.Changed:Connect(refresh)
+	if DataController.Get() then
+		refresh(DataController.Get())
+	end
+end
+
+return StyleController
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="92">
             <Properties>
               <string name="Name">UIController</string>
               <string name="Source"><![CDATA[--[[
@@ -15153,6 +16865,17 @@ local function buildBackdrop()
 	end
 end
 
+-- Menu theme from the shop (Backdrop items). nil restores the default.
+function UIController.SetBackdropColors(top: Color3?, bottom: Color3?)
+	if not backdrop then
+		return
+	end
+	local gradient = backdrop:FindFirstChildOfClass("UIGradient")
+	if gradient then
+		gradient.Color = if top and bottom then ColorSequence.new(top, bottom) else Theme.Gradient.Backdrop
+	end
+end
+
 function UIController.SetDecorations(enabled: boolean)
 	if not backdrop then
 		return
@@ -15230,7 +16953,7 @@ return UIController
             </Properties>
           </Item>
         </Item>
-        <Item class="LocalScript" referent="83">
+        <Item class="LocalScript" referent="93">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[--[[
@@ -15287,11 +17010,11 @@ end
 ]]></string>
           </Properties>
         </Item>
-        <Item class="Folder" referent="84">
+        <Item class="Folder" referent="94">
           <Properties>
             <string name="Name">UILib</string>
           </Properties>
-          <Item class="ModuleScript" referent="85">
+          <Item class="ModuleScript" referent="95">
             <Properties>
               <string name="Name">Anim</string>
               <string name="Source"><![CDATA[--[[
@@ -15403,7 +17126,77 @@ return Anim
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="86">
+          <Item class="ModuleScript" referent="96">
+            <Properties>
+              <string name="Name">Avatar</string>
+              <string name="Source"><![CDATA[--[[
+	Avatar  (StarterPlayerScripts.Client.UILib.Avatar)
+	Draws a player's look from a Style (Shared/Util/Style): a big face with
+	accessory, outfit and pet badges, and a name with name colour + title.
+
+	Avatar.Badge({ Style, Size?, Parent?, LayoutOrder?, Name? }) -> Frame
+	Avatar.NameRich(name, style) -> RichText string (coloured name)
+	Avatar.Line(name, style) -> "🧑‍🦱 Name" with name colour, for one-line labels
+]]
+
+local Theme = require(script.Parent.Theme)
+local Create = require(script.Parent.Create)
+
+local Avatar = {}
+
+function Avatar.Badge(p)
+	local style = p.Style or {}
+	local size = p.Size or 72
+	local frame = Create("Frame", {
+		Name = p.Name or "Avatar",
+		BackgroundColor3 = Theme.Color.SurfaceHigher,
+		Size = UDim2.fromOffset(size, size),
+		LayoutOrder = p.LayoutOrder or 0,
+		Parent = p.Parent,
+	}, { Create.Corner(Theme.RadiusPill), Create.Stroke(if style.NameColor then Color3.fromHex(style.NameColor) else Theme.Color.Stroke, 2, 0.1) })
+	local function glyph(name, text, scale, anchor, position)
+		if not text then
+			return
+		end
+		Create.Label({
+			Name = name,
+			Text = text,
+			TextScaled = true,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Size = UDim2.fromOffset(size * scale, size * scale),
+			AnchorPoint = anchor,
+			Position = position,
+			Parent = frame,
+		})
+	end
+	glyph("Face", style.Face or "🧑", 0.66, Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5))
+	glyph("Accessory", style.Accessory, 0.36, Vector2.new(1, 0), UDim2.fromScale(1.05, -0.05))
+	glyph("Outfit", style.Outfit, 0.32, Vector2.new(1, 1), UDim2.fromScale(1.05, 1.05))
+	glyph("Pet", style.Pet, 0.34, Vector2.new(0, 1), UDim2.fromScale(-0.08, 1.05))
+	return frame
+end
+
+local function escape(text: string): string
+	return (text:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"))
+end
+
+function Avatar.NameRich(name: string, style): string
+	local safe = escape(name)
+	if style and style.NameColor then
+		return ("<font color=\"%s\">%s</font>"):format(style.NameColor, safe)
+	end
+	return safe
+end
+
+function Avatar.Line(name: string, style): string
+	return ((style and style.Face) or "🧑") .. " " .. Avatar.NameRich(name, style) .. (if style and style.Title then (" <font color=\"%s\">· %s</font>"):format(Theme.Hex.Gold, escape(style.Title)) else "")
+end
+
+return Avatar
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="97">
             <Properties>
               <string name="Name">Components</string>
               <string name="Source"><![CDATA[--[[
@@ -15924,7 +17717,7 @@ return Components
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="87">
+          <Item class="ModuleScript" referent="98">
             <Properties>
               <string name="Name">Create</string>
               <string name="Source"><![CDATA[--[[
@@ -16040,7 +17833,7 @@ return Create
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="88">
+          <Item class="ModuleScript" referent="99">
             <Properties>
               <string name="Name">Layout</string>
               <string name="Source"><![CDATA[--[[
@@ -16145,7 +17938,7 @@ return Layout
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="89">
+          <Item class="ModuleScript" referent="100">
             <Properties>
               <string name="Name">Theme</string>
               <string name="Source"><![CDATA[--[[
@@ -16239,12 +18032,12 @@ return Theme
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="90">
+  <Item class="Workspace" referent="101">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="NeedsPivotMigration">false</bool>
     </Properties>
-    <Item class="Part" referent="91">
+    <Item class="Part" referent="102">
       <Properties>
         <string name="Name">Baseplate</string>
         <bool name="Anchored">true</bool>
@@ -16273,7 +18066,7 @@ return Theme
         <token name="TopSurface">0</token>
       </Properties>
     </Item>
-    <Item class="SpawnLocation" referent="92">
+    <Item class="SpawnLocation" referent="103">
       <Properties>
         <string name="Name">SpawnLocation</string>
         <bool name="Anchored">true</bool>

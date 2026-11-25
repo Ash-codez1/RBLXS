@@ -47,6 +47,7 @@ local RandomEvents = require(Server.Lib.RandomEvents)
 local Yearly = require(Server.Lib.Yearly)
 local Actions = require(Server.Lib.Actions)
 local Reveal = require(Server.Lib.Reveal)
+local CoinRewards = require(Server.Lib.CoinRewards)
 local Scenarios = require(Server.Content.Scenarios)
 
 local DataService = require(script.Parent.DataService)
@@ -344,6 +345,8 @@ function LifeService.MakeChoice(player: Player, scenarioArg: any, choiceArg: any
 				l.Stage += 1
 				l.ScenarioIndex = 0
 				revealPayload = Reveal.Stage(l, stageCompleted, rngFor(l, 6))
+				revealPayload.Coins = CoinRewards.Grant(d, Config.StageCoins)
+				revealPayload.Boosted = CoinRewards.Multiplier(d) > 1
 			else
 				l.Completed = true
 				lifeCompleted = true
@@ -353,8 +356,8 @@ function LifeService.MakeChoice(player: Player, scenarioArg: any, choiceArg: any
 				l.HistoryId = finalEntry.Id
 				table.insert(d.LifeHistory, finalEntry)
 				TableUtil.TrimArray(d.LifeHistory, Config.MaxLifeHistory)
-				d.Coins += finalEntry.Coins
-				d.Lifetime.CoinsEarned += finalEntry.Coins
+				finalEntry.Boosted = CoinRewards.Multiplier(d) > 1
+				finalEntry.Coins = CoinRewards.Grant(d, finalEntry.Coins)
 			end
 		end
 

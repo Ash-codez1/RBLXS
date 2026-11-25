@@ -26,6 +26,7 @@ local DataController = require(script.Parent.DataController)
 local UIController = require(script.Parent.UIController)
 local HUDController = require(script.Parent.HUDController)
 local NotificationController = require(script.Parent.NotificationController)
+local Avatar = require(UILib.Avatar)
 
 local FutureController = {}
 FutureController.Priority = 47
@@ -174,7 +175,7 @@ function renderCompare()
 			others += 1
 			local panel = Components.Panel({ Name = "Player" .. c.UserId, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Padding = 14, LayoutOrder = i, Parent = scroll, Color = Theme.Color.SurfaceHigh })
 			Create.List(Enum.FillDirection.Vertical, 4).Parent = panel
-			Create.Label({ Text = c.DisplayName .. (if c.IsFriend then "  · 🤝 Friend" else ""), FontFace = Theme.Font.Heavy, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = panel })
+			Create.Label({ Text = Avatar.Line(c.DisplayName, c.Style) .. (if c.IsFriend then "  · 🤝 Friend" else ""), RichText = true, FontFace = Theme.Font.Heavy, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = panel })
 			if c.Hidden then
 				Create.Label({ Text = "🔒 Keeps their future private.", TextColor3 = Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = panel })
 			elseif c.NoLife then

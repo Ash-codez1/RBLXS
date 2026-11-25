@@ -79,5 +79,11 @@ return {
 		JoinFriendServer = { RateLimit = { Rate = 0.2, Burst = 2 } }, -- (placeId, jobId)
 		-- ===== City events (CityEventService) =====
 		CityEventRespond = { RateLimit = { Rate = 1, Burst = 3 } }, -- (eventId, join)
+
+		-- ===== Shop & store (ShopService, StoreService) =====
+		ShopBuy = { RateLimit = { Rate = 2, Burst = 4 } }, -- (itemId)
+		ShopEquip = { RateLimit = { Rate = 4, Burst = 8 } }, -- (itemId)
+		ShopUnequip = { RateLimit = { Rate = 4, Burst = 8 } }, -- (slot)
+		GetStoreInfo = { RateLimit = { Rate = 0.5, Burst = 2 } }, -- () -> Robux products & passes
 	},
 }

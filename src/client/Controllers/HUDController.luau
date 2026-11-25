@@ -30,6 +30,8 @@ local Components = require(UILib.Components)
 
 local DataController = require(script.Parent.DataController)
 local UIController = require(script.Parent.UIController)
+local StyleController = require(script.Parent.StyleController)
+local Avatar = require(UILib.Avatar)
 
 local HUDController = {}
 HUDController.Priority = 40
@@ -69,13 +71,21 @@ function HUDController.Occupation(life): string
 	return "Unemployed"
 end
 
-local COMPACT_WIDTH = 1260
+-- One row needs room for: menu, identity, money, two bars, occupation and
+-- every action button; otherwise the HUD switches to two rows.
+local function actionBarWidth(): number
+	return #actions * 50 + math.max(0, #actions - 1) * 8
+end
+local function isCompact(): boolean
+	local needed = 50 + 220 + 140 + 120 + 120 + 250 + 14 * 6 + actionBarWidth() + 48
+	return UIController.GetVirtualSize().X < needed
+end
 local function hudHeight(): number
-	return if UIController.GetVirtualSize().X < COMPACT_WIDTH then 118 else 74
+	return if isCompact() then 118 else 74
 end
 
 local function actionBar(parent)
-	local width = #actions * 50 + math.max(0, #actions - 1) * 8
+	local width = actionBarWidth()
 	local bar = Create("Frame", { Name = "Actions", BackgroundTransparency = 1, Size = UDim2.fromOffset(width, 50), AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Parent = parent })
 	Create.List(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Right).Parent = bar
 	for i, action in ipairs(actions) do
@@ -86,7 +96,7 @@ end
 
 local function identityBlock(parent, width: number, order: number)
 	local frame = Create("Frame", { Name = "Identity", BackgroundTransparency = 1, Size = UDim2.fromOffset(width, 50), LayoutOrder = order, Parent = parent })
-	refs.Name = Create.Label({ Name = "Name", FontFace = Theme.Font.Heavy, TextSize = 22, Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false, Parent = frame })
+	refs.Name = Create.Label({ Name = "Name", RichText = true, FontFace = Theme.Font.Heavy, TextSize = 22, Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false, Parent = frame })
 	refs.Sub = Create.Label({ Name = "Sub", TextSize = Theme.TextSize.Small, TextColor3 = Theme.Color.TextDim, Size = UDim2.new(1, 0, 0, 22), Position = UDim2.fromOffset(0, 26), TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false, Parent = frame })
 	return frame
 end
@@ -95,7 +105,7 @@ local function render()
 	Create.Clear(hud, true)
 	refs = {}
 	local size = UIController.GetVirtualSize()
-	local compact = size.X < COMPACT_WIDTH
+	local compact = isCompact()
 	local height = hudHeight()
 
 	hud.Size = UDim2.new(1, -24, 0, height)
@@ -128,7 +138,7 @@ local function render()
 	if not compact then
 		local row = Create("Frame", { Name = "Row", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = hud })
 		Create.List(Enum.FillDirection.Horizontal, 14, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center).Parent = row
-		-- Widths budgeted for 1260+ virtual px: 50 + 220 + ~140 + 120 + 120 + ~250 + gaps + 224 (actions)
+		-- Widths budgeted in isCompact(): below that width the HUD uses two rows.
 		menuButton(row, 1)
 		identityBlock(row, 220, 2)
 		chip(row, "Money", 3)
@@ -162,7 +172,9 @@ local function update(animate: boolean?)
 		return
 	end
 	local stage = LifeStages.Get(life.Stage)
-	refs.Name.Text = life.Name
+	local style = StyleController.Get()
+	refs.Name.Text = style.Face .. " " .. Avatar.NameRich(life.Name, style)
+	refs.Name:SetAttribute("LifeName", life.Name)
 	refs.Sub.Text = ("Age %d · %s · %d/%d"):format(life.Age, stage.DisplayName, math.min(life.ScenarioIndex + 1, stage.ScenariosPerStage), stage.ScenariosPerStage)
 	refs.ProgressFill.BackgroundColor3 = stage.Color
 	local progress = UDim2.fromScale(life.ScenarioIndex / stage.ScenariosPerStage, 1)
@@ -302,6 +314,11 @@ function HUDController.Start()
 	DataController.Changed:Connect(function()
 		if UIController.Current() == "Game" then
 			update(true)
+		end
+	end)
+	StyleController.Changed:Connect(function()
+		if UIController.Current() == "Game" then
+			update(false)
 		end
 	end)
 	UIController.LayoutChanged:Connect(function()

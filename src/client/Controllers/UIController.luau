@@ -421,6 +421,17 @@ local function buildBackdrop()
 	end
 end
 
+-- Menu theme from the shop (Backdrop items). nil restores the default.
+function UIController.SetBackdropColors(top: Color3?, bottom: Color3?)
+	if not backdrop then
+		return
+	end
+	local gradient = backdrop:FindFirstChildOfClass("UIGradient")
+	if gradient then
+		gradient.Color = if top and bottom then ColorSequence.new(top, bottom) else Theme.Gradient.Backdrop
+	end
+end
+
 function UIController.SetDecorations(enabled: boolean)
 	if not backdrop then
 		return

@@ -94,8 +94,12 @@ udim2mt = {
 		return udim2(a.X.Scale + b.X.Scale, a.X.Offset + b.X.Offset, a.Y.Scale + b.Y.Scale, a.Y.Offset + b.Y.Offset)
 	end,
 }
+local function vec3(x, y, z)
+	return { X = x or 0, Y = y or 0, Z = z or 0, _type = "Vector3" }
+end
 local Datatypes = {
 	Vector2 = { new = vec2, zero = vec2(0, 0), one = vec2(1, 1) },
+	Vector3 = { new = vec3, zero = vec3(0, 0, 0), one = vec3(1, 1, 1) },
 	UDim2 = {
 		new = udim2,
 		fromScale = function(x, y)
@@ -114,6 +118,11 @@ local Datatypes = {
 		end,
 		new = function(r, g, b)
 			return { R = r, G = g, B = b }
+		end,
+		fromHex = function(hex)
+			local r, g, b = tostring(hex):match("^#?(%x%x)(%x%x)(%x%x)$")
+			assert(r, "bad hex colour " .. tostring(hex))
+			return { R = tonumber(r, 16) / 255, G = tonumber(g, 16) / 255, B = tonumber(b, 16) / 255 }
 		end,
 	},
 	ColorSequence = { new = function(...)
@@ -176,6 +185,7 @@ local EVENT_NAMES = {
 	Activated = true, MouseEnter = true, MouseLeave = true, InputBegan = true, InputEnded = true,
 	InputChanged = true, SelectionGained = true, SelectionLost = true, FocusLost = true, Focused = true,
 	Changed = true, MouseButton1Click = true, AncestryChanged = true, ChildAdded = true, Destroying = true,
+	CharacterAdded = true, CharacterRemoving = true,
 }
 
 local Instance = {}
@@ -512,6 +522,27 @@ function Harness.new(options)
 			InputChanged = fakeEvent(),
 			InputEnded = fakeEvent(),
 		},
+		MarketplaceService = {
+			ProcessReceipt = nil,
+			Prompts = {},
+			OwnedPasses = options.OwnedPasses or {}, -- [userId .. ":" .. passId] = true
+			PromptGamePassPurchaseFinished = fakeEvent(),
+			UserOwnsGamePassAsync = function(service, userId, passId)
+				if service.Unavailable then
+					error("Marketplace unavailable")
+				end
+				return service.OwnedPasses[userId .. ":" .. passId] == true
+			end,
+			GetProductInfo = function(_, id)
+				return { Name = "Item " .. tostring(id), PriceInRobux = 49 + id % 50 }
+			end,
+			PromptProductPurchase = function(service, player, id)
+				table.insert(service.Prompts, { Kind = "Product", Player = player, Id = id })
+			end,
+			PromptGamePassPurchase = function(service, player, id)
+				table.insert(service.Prompts, { Kind = "Pass", Player = player, Id = id })
+			end,
+		},
 		SocialService = {
 			Prompts = 0,
 			CanSendGameInviteAsync = function()
@@ -628,6 +659,7 @@ function Harness.new(options)
 	function self.makeLocalPlayer(userId: number, name: string)
 		local player = newInstance("Player", name)
 		rawset(player, "UserId", userId)
+		player.DisplayName = name
 		player.Parent = PlayersService
 		newInstance("PlayerGui", "PlayerGui").Parent = player
 		PlayersService.LocalPlayer = player
@@ -647,6 +679,7 @@ function Harness.new(options)
 	function self.addPlayer(userId: number, name: string)
 		local player = newInstance("Player", name)
 		rawset(player, "UserId", userId)
+		player.DisplayName = name
 		player.Parent = PlayersService
 		PlayersService.PlayerAdded:Fire(player)
 		return player

@@ -30,6 +30,8 @@ local Components = require(UILib.Components)
 
 local UIController = require(script.Parent.UIController)
 local AudioController = require(script.Parent.AudioController)
+local StyleController = require(script.Parent.StyleController)
+local Avatar = require(UILib.Avatar)
 
 local RevealController = {}
 RevealController.Priority = 46
@@ -251,8 +253,49 @@ local SCENES = {
 	Lonely = { Sky = { Color3.fromRGB(20, 25, 50), Color3.fromRGB(60, 70, 110) }, Hero = "🪑", Props = { "🌙", "🕯️", "📞" }, Sparkle = "✦", Caption = "A quiet house… but people are waiting to know you." },
 }
 
+-- Your shop cosmetics star in your own future: equipped home, car and pet
+-- replace the defaults in the scenes where they belong.
+local function personalise(archetype: string, scene)
+	local style = StyleController.Get()
+	local result = table.clone(scene)
+	result.Props = table.clone(scene.Props)
+	if archetype == "Luxury" then
+		result.Hero = style.House or scene.Hero
+		result.Props[1] = style.Car or scene.Props[1]
+		result.Props[3] = style.Pet or scene.Props[3]
+	elseif archetype == "Family" then
+		result.Hero = style.House or scene.Hero
+		result.Props[2] = style.Pet or scene.Props[2]
+	elseif archetype == "Career" then
+		result.Props[1] = style.Car or scene.Props[1]
+	elseif archetype == "Content" or archetype == "Health" then
+		result.Props[2] = style.Pet or scene.Props[2]
+	end
+	return result
+end
+
+-- Falling glyphs from an equipped Reveal effect (shop cosmetic). They live in
+-- their own layer above the steps, so they keep falling into the next step
+-- (e.g. when the player skips straight to the end card).
+local function effectRain(count: number)
+	local glyphs = StyleController.Get().RevealGlyphs
+	if not glyphs or Anim.Reduced then
+		return
+	end
+	local layer = root:FindFirstChild("Fx") or Create("Frame", { Name = "Fx", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3, Parent = root })
+	local rng = Random.new()
+	for i = 1, count do
+		local g = Create.Label({ Name = "RevealFx" .. i, Text = glyphs[(i - 1) % #glyphs + 1], TextSize = rng:NextInteger(24, 40), TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromOffset(44, 44), Position = UDim2.new(rng:NextNumber(0, 0.97), 0, -0.1 - rng:NextNumber(0, 0.4), 0), Parent = layer })
+		local duration = rng:NextNumber(2, 3.5)
+		Anim.Tween(g, { Position = UDim2.new(g.Position.X.Scale, 0, 1.1, 0), Rotation = rng:NextInteger(-90, 90) }, duration, Enum.EasingStyle.Linear)
+		task.delay(duration + 0.1, function()
+			g:Destroy()
+		end)
+	end
+end
+
 local function sceneStep(archetype: string)
-	local scene = SCENES[archetype] or SCENES.Content
+	local scene = personalise(archetype, SCENES[archetype] or SCENES.Content)
 	local step = newStep()
 	local s = size()
 	local frame = Create("CanvasGroup", { Name = "Scene", BackgroundColor3 = Theme.Color.White, Size = UDim2.fromScale(1, 1), Parent = step }, {
@@ -384,6 +427,10 @@ function RevealController.PlayStage(reveal)
 	Create.Gradient(Theme.Gradient.Title).Parent = title
 	label(col, { Text = ("%s is over. You are %d."):format(reveal.StageName, reveal.Age), TextSize = Theme.TextSize.H3, TextColor3 = Theme.Color.TextDim, LayoutOrder = 2 })
 	Anim.Pop(title, 0.6, 0.9)
+	effectRain(18)
+	if reveal.Coins and reveal.Coins > 0 then
+		label(col, { Name = "RevealCoins", Text = ("🪙 +%d coins%s"):format(reveal.Coins, if reveal.Boosted then "  (2× Coins)" else ""), FontFace = Theme.Font.Heavy, TextColor3 = Theme.Color.Gold, LayoutOrder = 3 })
+	end
 	pause(1.8)
 
 	-- 2. Who you became
@@ -623,10 +670,11 @@ function RevealController.PlayFinal(entry, options)
 	Create.Gradient(Theme.Gradient.Title).Parent = endingTitle
 	label(c8, { Text = entry.Ending.Line, TextSize = Theme.TextSize.H3, TextColor3 = Theme.Color.TextDim, LayoutOrder = 3 })
 	if not options.Replay then
-		label(c8, { Text = ("🪙 +%d coins"):format(entry.Coins or 0), FontFace = Theme.Font.Heavy, TextColor3 = Theme.Color.Gold, LayoutOrder = 4 })
+		label(c8, { Name = "RevealCoins", Text = ("🪙 +%d coins%s"):format(entry.Coins or 0, if entry.Boosted then "  (2× Coins)" else ""), FontFace = Theme.Font.Heavy, TextColor3 = Theme.Color.Gold, LayoutOrder = 4 })
 	end
 	Anim.Pop(icon, 0.3, 1)
 	Anim.Pop(endingTitle, 0.6, 0.9)
+	effectRain(26)
 	pause(2.5)
 
 	local result = endCard("What if you had chosen differently?", "Every life is a different story. Would yours have turned out better?", {
@@ -666,7 +714,7 @@ function RevealController.PlayGroup(payload)
 		end
 		local s2 = newStep()
 		local c2 = column(s2, width)
-		label(c2, { Text = entry.DisplayName .. (if entry.IsYou then " (you)" else ""), FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H1, LayoutOrder = 1 })
+		label(c2, { Text = Avatar.Line(entry.DisplayName, entry.Style) .. (if entry.IsYou then " (you)" else ""), RichText = true, FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H1, LayoutOrder = 1 })
 		if entry.Hidden or not entry.Card then
 			label(c2, { Text = if entry.NoLife then "Between lives right now." else "🔒 Keeps their future private.", TextColor3 = Theme.Color.TextDim, TextSize = Theme.TextSize.H3, LayoutOrder = 2 })
 			pause(1.2)

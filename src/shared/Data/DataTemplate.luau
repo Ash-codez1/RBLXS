@@ -10,7 +10,9 @@
 	├─ ActiveSlot         "Slot1" | "Slot2" | "Slot3"
 	├─ Slots              { Slot1 = Life | false, ... }  (false = empty slot)
 	├─ LifeHistory        array of completed-life summaries (capped)
-	├─ Inventory          { Owned = { [itemId] = true }, Equipped = { [category] = itemId } }
+	├─ Inventory          { Owned = { [itemId] = true }, Equipped = { [slot] = itemId } } (Data/Catalog)
+	├─ Passes             game pass ownership (from Roblox on every join)
+	├─ PassesUnverified   in-game pass purchases Roblox hasn't confirmed yet
 	├─ Achievements       { [achievementId] = unlockUnixTime }
 	├─ Collectibles       { [collectibleId] = true }
 	├─ Daily              login streak / daily reward state
@@ -59,7 +61,9 @@ local profileTemplate = {
 	ActiveSlot = "Slot1",
 	Slots = {},
 	LifeHistory = {},
-	Inventory = { Owned = {}, Equipped = {} },
+	Inventory = { Owned = {}, Equipped = {} }, -- cosmetics: Owned[itemId] = true, Equipped[slot] = itemId
+	Passes = {}, -- game pass ownership { VIP = true, CoinBooster = true }, from Roblox on every join
+	PassesUnverified = {}, -- passes bought in this session that Roblox hasn't confirmed yet (re-checked on join)
 	Achievements = {},
 	Collectibles = {},
 	Daily = { LastClaimDay = 0, Streak = 0, BestStreak = 0 },
@@ -69,6 +73,8 @@ local profileTemplate = {
 		LivesCompleted = 0,
 		DecisionsMade = 0,
 		CoinsEarned = 0,
+		CoinsBought = 0,
+		CoinsSpent = 0,
 		HighestNetWorth = 0,
 		RareEventsSeen = 0,
 		FirstJoin = 0,

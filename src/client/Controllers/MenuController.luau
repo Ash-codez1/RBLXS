@@ -29,6 +29,8 @@ local Layout = require(UILib.Layout)
 local DataController = require(script.Parent.DataController)
 local UIController = require(script.Parent.UIController)
 local NotificationController = require(script.Parent.NotificationController)
+local StyleController = require(script.Parent.StyleController)
+local Avatar = require(UILib.Avatar)
 
 local MenuController = {}
 MenuController.Priority = 30
@@ -127,6 +129,7 @@ local MENU_ITEMS = {
 		UIController.Show("SlotSelect", "New")
 	end },
 	{ Text = "Shop", Icon = "🛍️", Screen = "Shop" },
+	{ Text = "My Items", Icon = "🎒", Screen = "Inventory" },
 	{ Text = "Achievements", Icon = "🏆", Screen = "Achievements" },
 	{ Text = "Leaderboards", Icon = "📈", Screen = "Leaderboards" },
 	{ Text = "Life History", Icon = "📜", Screen = "LifeHistory" },
@@ -172,16 +175,24 @@ local function buildLifeCard(parent, width: number, life, layoutOrder: number)
 		})
 		return card
 	end
+	local style = StyleController.Get()
+	local nameRow = Create("Frame", { Name = "NameRow", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64), LayoutOrder = 2, Parent = card })
+	Avatar.Badge({ Style = style, Size = 60, Parent = nameRow })
 	Create.Label({
-		Text = life.Name,
+		Name = "LifeName",
+		Text = Avatar.NameRich(life.Name, style),
+		RichText = true,
 		FontFace = Theme.Font.Heavy,
 		TextSize = Theme.TextSize.H1,
-		Size = UDim2.new(1, 0, 0, 44),
+		Position = UDim2.fromOffset(74, 0),
+		Size = UDim2.new(1, -74, 0, 40),
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextWrapped = false,
-		LayoutOrder = 2,
-		Parent = card,
+		Parent = nameRow,
 	})
+	if style.Title then
+		Create.Label({ Text = style.Title, TextColor3 = Theme.Color.Gold, TextSize = Theme.TextSize.Small, Position = UDim2.fromOffset(74, 40), Size = UDim2.new(1, -74, 0, 22), Parent = nameRow })
+	end
 	Create.Label({ Text = lifeSummary(life), TextColor3 = Theme.Color.TextDim, LayoutOrder = 3, Parent = card })
 	local stage = LifeStages.Get(life.Stage)
 	local progress = Components.StatBar({
@@ -629,6 +640,11 @@ function MenuController.Start()
 		local screen = UIController.Current()
 		if screen == "SlotSelect" then
 			renderSlots()
+		end
+	end)
+	StyleController.Changed:Connect(function()
+		if UIController.Current() == "Menu" then
+			renderMenu()
 		end
 	end)
 end

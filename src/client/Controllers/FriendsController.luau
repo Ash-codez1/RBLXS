@@ -25,6 +25,7 @@ local HUDController = require(script.Parent.HUDController)
 local NotificationController = require(script.Parent.NotificationController)
 local PartyController = require(script.Parent.PartyController)
 local FutureController = require(script.Parent.FutureController)
+local Avatar = require(UILib.Avatar)
 
 local FriendsController = {}
 FriendsController.Priority = 50
@@ -54,7 +55,7 @@ end
 local function row(parent, order: number, title: string, subtitle: string, buttons)
 	local frameRow = Create("Frame", { Name = "Row" .. order, BackgroundColor3 = Theme.Color.SurfaceHigh, BackgroundTransparency = 0.15, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order, Parent = parent }, { Create.Corner(Theme.RadiusSmall), Create.Padding(10, 14) })
 	Create.List(Enum.FillDirection.Vertical, 6).Parent = frameRow
-	Create.Label({ Text = title, FontFace = Theme.Font.Heavy, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = frameRow })
+	Create.Label({ Name = "Title", Text = title, RichText = true, FontFace = Theme.Font.Heavy, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = frameRow })
 	if subtitle ~= "" then
 		Create.Label({ Text = subtitle, TextSize = Theme.TextSize.Small, TextColor3 = Theme.Color.TextDim, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Parent = frameRow })
 	end
@@ -149,7 +150,7 @@ function render()
 					end })
 				end
 			end
-			row(column, 2 + i, (if m.IsLeader then "👑 " else "") .. m.DisplayName .. (if m.UserId == me.UserId then " (you)" else ""), memberSummary(m), buttons)
+			row(column, 2 + i, (if m.IsLeader then "👑 " else "") .. Avatar.Line(m.DisplayName, m.Style) .. (if m.UserId == me.UserId then " (you)" else ""), memberSummary(m), buttons)
 		end
 		local eventText = if state.EventActive then "Deciding…" elseif state.EventCooldown > 0 then ("Group decision (%ds)"):format(state.EventCooldown) else "Group decision"
 		row(column, 10, "Do something together", "Start a group decision for everyone to vote on, or watch everyone's futures in a Group Life Reveal.", {
@@ -173,7 +174,7 @@ function render()
 			others += 1
 			local already = inCircle(p.UserId)
 			local full = state and #state.Members >= state.MaxMembers
-			row(column, 20 + i, p.DisplayName or p.Name, if already then "In your circle" else "", {
+			row(column, 20 + i, Avatar.NameRich(p.DisplayName or p.Name, nil), if already then "In your circle" else "", {
 				{ Name = "Invite" .. p.UserId, Text = if already then "In circle" else "Invite", Icon = "🤝", Style = "Primary", Width = 160, Disabled = already or full, OnClick = function()
 					local ok = act("PartyInvite", p.UserId)
 					if ok then
