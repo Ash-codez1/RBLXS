@@ -15,16 +15,18 @@ You need a **Windows or Mac computer** with **Roblox Studio** (free). Studio doe
 
 **What you should see:**
 - **Output window** (View → Output):
-  - `[Server] CHOOSE YOUR LIFE started with 10 services` and no red errors.
+  - `[Server] CHOOSE YOUR LIFE started with 13 services` and no red errors.
   - A yellow line saying DataStores are unavailable and the in-memory store is being used. That's expected: an unpublished place can't save, so progress resets each time you press Stop.
   - If filtering isn't available in Studio, a yellow line about text filtering. That's also expected and only happens in Studio.
 - **On screen:** a loading screen, then the main menu. **Play** → choose a name → decision cards.
+- **In the Explorer window:** `Workspace › World` appears once you press Play. The town is generated when the server starts, so in Edit mode Workspace only holds `SeaFloor` and `SpawnLocation` (README §1 shows how to bake the town in if you want to edit it).
 
 **Things to try:**
 - Play through Childhood to see your first **Life Reveal**.
 - The HUD buttons: 🔮 Future, 🤝 Circle, 👥 People, 🎯 Lifestyle, 💰 Money, 📊 Stats.
 - Settings, save slots, and Life History (after you finish a life).
 - **🛍️ Shop** and **🎒 My Items** (main menu): you start with 100 Coins, enough for a baseball cap. Watch your look change on the menu card, in the HUD and on your character's name tag.
+- **🌆 Explore Lifeville** (the first HUD button, or the main menu): see the next section.
 
 > Tip: to rush through a life, tap each card twice (select + confirm) and press **Continue**. Settings → **Reduce animations** shortens the cinematics.
 
@@ -33,6 +35,22 @@ You need a **Windows or Mac computer** with **Roblox Studio** (free). Studio doe
 1. **File → Publish to Roblox** (create a new experience; it can stay private).
 2. **Home → Game Settings → Security →** turn on **Enable Studio Access to API Services** → Save.
 3. Press Play again. The "in-memory" warning disappears and your lives, coins and settings persist.
+
+### Explore Lifeville (the 3D town)
+
+1. Start a life, then press **🌆** in the HUD. The menus fade and you're standing in Lifeville Plaza.
+2. Move with **WASD**, the touch thumbstick or a gamepad stick. Press **E** (tap, or **X** on a gamepad) when a prompt appears.
+3. Things to try:
+   - **Mayor Bloom** (just north of the spawn): talk to him, then try **Show me the town map** and tap a district to get a golden guide line.
+   - **The wishing fountain:** you should hear a splash and see a result card (+Happiness). Note the **⚡ actions** counter in the top bar.
+   - **Maple School** (west): study at a desk and read in the library. After 2 actions you're told to make your next decision. Press **📝 Next decision**, decide, then come back with 🌆 to get 2 more actions.
+   - **Downtown** (north) is walled off for a child, with a sign saying when it opens. As a grown-up, try the bank, the café, The Golden Fork and the boutique (which opens the shop).
+   - **Oak Street** (south): find the house with your name on the sign and go inside. Buy a house style or car in the shop and watch your house change within a few seconds.
+   - **Day and night:** a full day lasts 12 minutes, so dusk is never more than 12 minutes away. At dusk the lamps and windows light up.
+4. **Life Reveal flyover:** finish a life stage with Settings → **Reduce animations** off. After the cinematic preview, the camera flies over a real place in town.
+5. **Two players** (Test → Clients and Servers): you should see each other walking around, and each of you gets your own house.
+
+> If a townsperson can't be built in Studio, Output shows a yellow `[NPCService] Using a simple character for …` line and a block figure stands there instead. Please report it if you see it.
 
 ### Test the shop and Robux purchases
 

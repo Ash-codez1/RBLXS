@@ -66,6 +66,9 @@ Config.LoadingTips = {
 	"Traits you build as a child make similar choices pay off more later in life.",
 	"You have three save slots, so try living three completely different lives.",
 	"Some outcomes are risky. Look for the 🎲 on a choice.",
+	"Press 🌆 to explore Lifeville: study, work out, eat out or work a shift around town.",
+	"More of Lifeville opens as you grow up: Downtown at 13, the university and Career Row at 19.",
+	"Your house on Oak Street changes with your life, and with the style you pick in the shop.",
 }
 
 return Config

@@ -5,9 +5,11 @@
 	and returns ok, result | reason. LifeService wraps them in remotes and
 	DataService.Update.
 
-	People actions (limited to People.ActionsPerTurn per decision):
+	People and world actions (limited to People.ActionsPerTurn per decision):
 	  Interact(personId, "Time" | "Gift" | "Talk")
 	  Meet("Friend" | "Love")
+	  World(spotId, { OwnHome = bool })   -- Lifeville spots (Data/WorldSpots);
+	                                        WorldService checks where you are
 	Free actions:
 	  SetFocus(focusId)
 	  Invest(amount), Withdraw(amount), RepayLoan(index, amount)   (age 18+)
@@ -20,6 +22,10 @@ local People = require(Shared.Util.People)
 local Lifestyle = require(Shared.Data.Lifestyle)
 local Format = require(Shared.Util.Format)
 local Consequences = require(script.Parent.Consequences)
+local World = require(Shared.Data.World)
+local WorldSpots = require(Shared.Data.WorldSpots)
+local Careers = require(Shared.Data.Careers)
+local TableUtil = require(Shared.Util.TableUtil)
 
 local Actions = {}
 
@@ -48,6 +54,8 @@ local function finish(life, summary, text: string)
 		Applied = summary.Applied,
 		BondChanges = summary.BondChanges,
 		LifeChanges = summary.LifeChanges,
+		MoneyDelta = summary.MoneyDelta,
+		Story = if summary.Story ~= "" then summary.Story else nil,
 		ActionsLeft = Actions.ActionsLeft(life),
 	}
 end
@@ -206,6 +214,76 @@ function Actions.RepayLoan(life, index: any, amount: any)
 	end
 	Consequences.SyncWealth(life)
 	return true, { Money = life.Money, PaidOff = paidOff }
+end
+
+-- ===== Lifeville world actions =====
+function Actions.ShiftPay(life): number
+	if life.Career.Id == "None" or not Careers.Info[life.Career.Id] then
+		return 0
+	end
+	return math.max(WorldSpots.MinShiftPay, math.floor(Careers.SalaryAt(life.Career.Id, life.Career.Level) * WorldSpots.ShiftPay))
+end
+
+-- Checks a spot against this life without changing it: ok, reason.
+function Actions.CanUseSpot(life, spotDef, extra): (boolean, string?)
+	if life.Completed then
+		return false, "NoLife"
+	end
+	if not spotDef or spotDef.Kind == "Open" then
+		return false, "BadSpot"
+	end
+	local stage = World.StageOf(life)
+	if not World.IsUnlocked(spotDef.District, stage) or (spotDef.Lock and not World.IsLockOpen(spotDef.Lock, stage)) then
+		return false, "Locked"
+	end
+	if spotDef.MinAge and life.Age < spotDef.MinAge then
+		return false, "TooYoung"
+	end
+	if spotDef.MaxAge and life.Age > spotDef.MaxAge then
+		return false, "TooOld"
+	end
+	if spotDef.Flag and not life.Flags[spotDef.Flag] then
+		return false, "NeedFlag"
+	end
+	if spotDef.Kind == "Shift" then
+		if life.Career.Id == "None" or life.Flags.Retired then
+			return false, "NoJob"
+		end
+		if World.WorkplaceOf[life.Career.Id] ~= spotDef.Workplace then
+			return false, "WrongJob"
+		end
+	end
+	if spotDef.OwnHome and not (extra and extra.OwnHome) then
+		return false, "NotYourHome"
+	end
+	if Actions.ActionsLeft(life) <= 0 then
+		return false, "NoActionsLeft"
+	end
+	if WorldSpots.CostFor(spotDef, life.Age) > life.Money then
+		return false, "NotEnoughMoney"
+	end
+	return true, nil
+end
+
+function Actions.World(life, spotId: any, extra, rng)
+	local spotDef = WorldSpots.Get(spotId)
+	local ok, reason = Actions.CanUseSpot(life, spotDef, extra)
+	if not ok then
+		return false, reason
+	end
+	local effects
+	if spotDef.Kind == "Shift" then
+		effects = { Stats = { Career = 2, Happiness = -1 }, Money = Actions.ShiftPay(life) }
+	else
+		effects = TableUtil.DeepCopy(spotDef.Effects)
+		local cost = WorldSpots.CostFor(spotDef, life.Age)
+		if cost > 0 then
+			effects.Money = (effects.Money or 0) - cost
+		end
+	end
+	local summary = Consequences.Apply(life, effects, rng, true)
+	useAction(life)
+	return finish(life, summary, spotDef.Text or spotDef.Label)
 end
 
 return Actions

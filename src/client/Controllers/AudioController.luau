@@ -27,6 +27,7 @@ local MUSIC_FOR_SCREEN = {
 	Settings = nil, -- keep whatever is playing
 	Credits = "MenuMusic",
 	Game = "GameMusic",
+	Explore = "WorldMusic",
 }
 
 local function makeSound(name: string, group: SoundGroup, looped: boolean): Sound?

@@ -17,7 +17,20 @@ return {
 	AgeUp = "",
 	StageComplete = "",
 	Notify = "",
+	-- Ships with the Roblox client (the default character splash sound):
+	Splash = "rbxasset://sounds/impact_water.mp3",
 	-- Music (looped)
 	MenuMusic = "",
 	GameMusic = "",
+	WorldMusic = "", -- while exploring Lifeville
+	-- Ambience (looped, explore mode): one per district type, plus night
+	AmbientPlaza = "",
+	AmbientSchool = "",
+	AmbientPark = "",
+	AmbientResidential = "",
+	AmbientHospital = "",
+	AmbientCity = "",
+	AmbientHarbour = "",
+	AmbientNight = "",
+	BuskerMusic = "", -- plays near Jay the busker in the Plaza
 }

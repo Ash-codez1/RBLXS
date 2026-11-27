@@ -85,5 +85,7 @@ return {
 		ShopEquip = { RateLimit = { Rate = 4, Burst = 8 } }, -- (itemId)
 		ShopUnequip = { RateLimit = { Rate = 4, Burst = 8 } }, -- (slot)
 		GetStoreInfo = { RateLimit = { Rate = 0.5, Burst = 2 } }, -- () -> Robux products & passes
+		-- Phase 8 (Lifeville): use a world spot (or one offered by an NPC you're talking to)
+		WorldAction = { RateLimit = { Rate = 2, Burst = 4 } }, -- (spotId, npcId?) -> outcome
 	},
 }

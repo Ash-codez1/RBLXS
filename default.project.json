@@ -25,51 +25,6 @@
     },
     "Workspace": {
       "$className": "Workspace",
-      "Baseplate": {
-        "$className": "Part",
-        "$properties": {
-          "Anchored": true,
-          "Locked": true,
-          "Size": [
-            512,
-            20,
-            512
-          ],
-          "Color": [
-            0.388,
-            0.373,
-            0.384
-          ],
-          "TopSurface": "Smooth",
-          "BottomSurface": "Smooth",
-          "CFrame": {
-            "CFrame": {
-              "position": [
-                0,
-                -10,
-                0
-              ],
-              "orientation": [
-                [
-                  1,
-                  0,
-                  0
-                ],
-                [
-                  0,
-                  1,
-                  0
-                ],
-                [
-                  0,
-                  0,
-                  1
-                ]
-              ]
-            }
-          }
-        }
-      },
       "SpawnLocation": {
         "$className": "SpawnLocation",
         "$properties": {
@@ -86,7 +41,58 @@
             "CFrame": {
               "position": [
                 0,
-                0.5,
+                0.66,
+                32
+              ],
+              "orientation": [
+                [
+                  1,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  1,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  1
+                ]
+              ]
+            }
+          },
+          "Color": [
+            0.42,
+            0.3,
+            0.58
+          ],
+          "Material": "SmoothPlastic"
+        }
+      },
+      "SeaFloor": {
+        "$className": "Part",
+        "$properties": {
+          "Anchored": true,
+          "Locked": true,
+          "Size": [
+            1040,
+            4,
+            1040
+          ],
+          "Color": [
+            0.82,
+            0.74,
+            0.55
+          ],
+          "TopSurface": "Smooth",
+          "BottomSurface": "Smooth",
+          "CFrame": {
+            "CFrame": {
+              "position": [
+                0,
+                -16,
                 0
               ],
               "orientation": [
@@ -107,8 +113,33 @@
                 ]
               ]
             }
-          }
+          },
+          "Material": "Sand"
         }
+      },
+      "$properties": {
+        "StreamingEnabled": false
+      }
+    },
+    "Lighting": {
+      "$className": "Lighting",
+      "$properties": {
+        "Technology": "ShadowMap",
+        "Brightness": 2,
+        "ClockTime": 14,
+        "GlobalShadows": true,
+        "EnvironmentDiffuseScale": 1,
+        "EnvironmentSpecularScale": 1,
+        "OutdoorAmbient": [
+          0.5,
+          0.5,
+          0.55
+        ],
+        "Ambient": [
+          0.35,
+          0.35,
+          0.4
+        ]
       }
     }
   }

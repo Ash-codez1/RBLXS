@@ -84,12 +84,14 @@ local function hudHeight(): number
 	return if isCompact() then 118 else 74
 end
 
-local function actionBar(parent)
-	local width = actionBarWidth()
-	local bar = Create("Frame", { Name = "Actions", BackgroundTransparency = 1, Size = UDim2.fromOffset(width, 50), AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Parent = parent })
-	Create.List(Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Right).Parent = bar
+-- Compact layouts use slightly smaller buttons so every action still fits.
+local function actionBar(parent, compact: boolean?)
+	local button, gap = if compact then 44 else 50, if compact then 6 else 8
+	local width = #actions * button + math.max(0, #actions - 1) * gap
+	local bar = Create("Frame", { Name = "Actions", BackgroundTransparency = 1, Size = UDim2.fromOffset(width, button), AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Parent = parent })
+	Create.List(Enum.FillDirection.Horizontal, gap, Enum.HorizontalAlignment.Right).Parent = bar
 	for i, action in ipairs(actions) do
-		Components.Button({ Name = action.Id, Text = action.Icon, Style = if i == #actions then "Accent" else "Secondary", Size = UDim2.fromOffset(50, 50), TextSize = 24, LayoutOrder = i, Parent = bar, OnClick = action.OnClick })
+		Components.Button({ Name = action.Id, Text = action.Icon, Style = if action.Style then action.Style elseif i == #actions then "Accent" else "Secondary", Size = UDim2.fromOffset(button, button), TextSize = if compact then 21 else 24, LayoutOrder = i, Parent = bar, OnClick = action.OnClick })
 	end
 	return width
 end
@@ -149,7 +151,7 @@ local function render()
 	else
 		local top = Create("Frame", { Name = "Top", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 50), Parent = hud })
 		menuButton(top, 1).Position = UDim2.fromOffset(0, 0)
-		local barWidth = actionBar(top)
+		local barWidth = actionBar(top, true)
 		local identity = identityBlock(top, size.X - 24 - 24 - 50 - barWidth - 28, 2)
 		identity.Position = UDim2.fromOffset(64, 0)
 

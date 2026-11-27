@@ -20,6 +20,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Futures = require(Shared.Util.Futures)
 local Format = require(Shared.Util.Format)
 local LifeStages = require(Shared.Data.LifeStages)
+local World = require(Shared.Data.World)
 local StatDefinitions = require(Shared.Data.StatDefinitions)
 
 local UILib = script.Parent.Parent:WaitForChild("UILib")
@@ -347,6 +348,30 @@ local function sceneStep(archetype: string)
 	pause(2.6)
 end
 
+-- ===== The real place in Lifeville (camera flyover) =====
+local function worldStep(archetype: string)
+	local Showcase = require(script.Parent.ShowcaseController)
+	if Anim.Reduced or not Showcase.Available(archetype) then
+		return
+	end
+	local step = newStep()
+	local backdrop = root:FindFirstChild("Backdrop")
+	if backdrop then
+		backdrop.Visible = false
+	end
+	local shot = Showcase.Begin(archetype)
+	local strip = Create("Frame", { Name = "WorldShowcase", BackgroundColor3 = Theme.Color.Black, BackgroundTransparency = 0.35, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 130), Parent = step })
+	label(strip, { Name = "Place", Text = "📍 " .. shot.Place .. ", " .. World.TownName, FontFace = Theme.Font.Heavy, TextSize = Theme.TextSize.H2, Position = UDim2.fromOffset(0, 20) })
+	label(strip, { Name = "Line", Text = "One day, this could be where your story leads.", TextColor3 = Theme.Color.TextDim, TextSize = Theme.TextSize.H3, Position = UDim2.fromOffset(0, 70) })
+	Showcase.Glide(3.8)
+	pause(3.8)
+	Showcase.End()
+	if backdrop then
+		backdrop.Visible = true
+	end
+end
+RevealController.WorldStep = worldStep
+
 -- ===== End card =====
 local function endCard(title: string, body: string, buttons)
 	session.Skip = false
@@ -401,6 +426,7 @@ local function finish()
 	playing = false
 	gui.Enabled = false
 	Create.Clear(root)
+	require(script.Parent.ShowcaseController).End() -- never leave the camera flying
 end
 
 function RevealController.IsPlaying(): boolean
@@ -499,9 +525,12 @@ function RevealController.PlayStage(reveal)
 		end
 	end
 
-	-- 6. Cinematic preview
+	-- 6. Cinematic preview, then the real place in Lifeville
 	if not session.Skip then
 		sceneStep(reveal.Archetype)
+	end
+	if not session.Skip then
+		worldStep(reveal.Archetype)
 	end
 
 	-- 7. End card

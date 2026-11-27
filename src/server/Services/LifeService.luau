@@ -433,6 +433,12 @@ local function runAction(player: Player, fn, ...)
 	return ok, if type(result) == "table" then TableUtil.DeepCopy(result) else result
 end
 
+-- Lifeville world actions. WorldService validates where the player is first
+-- (distance to the spot or NPC, their own home) and passes `extra`.
+function LifeService.WorldAction(player: Player, spotId: string, extra)
+	return runAction(player, Actions.World, spotId, extra or {})
+end
+
 function LifeService.Interact(player: Player, personId: any, action: any)
 	local id = Validate.Id(personId, 16)
 	local kind = Validate.OneOf(action, { "Time", "Gift", "Talk" })

@@ -119,6 +119,8 @@ local function quickPlay()
 	end
 end
 
+MenuController.QuickPlay = quickPlay
+
 -- ===== Main menu =====
 local MENU_ITEMS = {
 	{ Text = "Play With Friends", Icon = "👥", Screen = "Friends" },
@@ -128,6 +130,7 @@ local MENU_ITEMS = {
 	{ Text = "New Life", Icon = "✨", Action = function()
 		UIController.Show("SlotSelect", "New")
 	end },
+	{ Text = "Explore Lifeville", Icon = "🌆", Screen = "Explore" },
 	{ Text = "Shop", Icon = "🛍️", Screen = "Shop" },
 	{ Text = "My Items", Icon = "🎒", Screen = "Inventory" },
 	{ Text = "Achievements", Icon = "🏆", Screen = "Achievements" },
@@ -607,7 +610,7 @@ function MenuController.Init()
 		end,
 	})
 	slotFrame = UIController.NewScreen("SlotSelect", {
-		Back = "Menu",
+		Back = true, -- the menu, or Lifeville if you came from the Hall of Lives
 		OnOpen = function(mode)
 			slotMode = mode or slotMode
 			renderSlots()

@@ -13,6 +13,8 @@ local task = require("@lune/task")
 
 local Harness = {}
 Harness.eventErrors = {}
+local Math3D = require("./math3d")
+Harness.Math3D = Math3D
 
 local ROOT = "src"
 
@@ -94,12 +96,16 @@ udim2mt = {
 		return udim2(a.X.Scale + b.X.Scale, a.X.Offset + b.X.Offset, a.Y.Scale + b.Y.Scale, a.Y.Offset + b.Y.Offset)
 	end,
 }
-local function vec3(x, y, z)
-	return { X = x or 0, Y = y or 0, Z = z or 0, _type = "Vector3" }
-end
 local Datatypes = {
 	Vector2 = { new = vec2, zero = vec2(0, 0), one = vec2(1, 1) },
-	Vector3 = { new = vec3, zero = vec3(0, 0, 0), one = vec3(1, 1, 1) },
+	Vector3 = Math3D.Vector3,
+	CFrame = Math3D.CFrame,
+	NumberRange = { new = function(min, max)
+		return { Min = min, Max = max or min }
+	end },
+	PhysicalProperties = { new = function(...)
+		return { ... }
+	end },
 	UDim2 = {
 		new = udim2,
 		fromScale = function(x, y)
@@ -169,7 +175,16 @@ local CLASS_PARENTS = {
 	GuiButton = "GuiObject", GuiObject = "GuiBase2d", ScreenGui = "LayerCollector", LayerCollector = "GuiBase2d",
 	BloomEffect = "PostEffect", SunRaysEffect = "PostEffect", BlurEffect = "PostEffect",
 	DepthOfFieldEffect = "PostEffect", ColorCorrectionEffect = "PostEffect",
+	Part = "FormFactorPart", FormFactorPart = "BasePart", WedgePart = "FormFactorPart", CornerWedgePart = "BasePart",
+	TrussPart = "BasePart", MeshPart = "BasePart", UnionOperation = "BasePart", SpawnLocation = "Part", Seat = "Part",
+	BasePart = "PVInstance", Model = "PVInstance", Workspace = "Model",
+	SurfaceGui = "LayerCollector", BillboardGui = "LayerCollector",
+	PointLight = "Light", SpotLight = "Light", SurfaceLight = "Light",
 }
+local BASE_PART = { Part = true, WedgePart = true, CornerWedgePart = true, TrussPart = true, MeshPart = true, UnionOperation = true, SpawnLocation = true, Seat = true }
+Harness.isBasePart = function(className)
+	return BASE_PART[className] == true
+end
 local function isA(className, target)
 	local c = className
 	while c do
@@ -186,6 +201,8 @@ local EVENT_NAMES = {
 	InputChanged = true, SelectionGained = true, SelectionLost = true, FocusLost = true, Focused = true,
 	Changed = true, MouseButton1Click = true, AncestryChanged = true, ChildAdded = true, Destroying = true,
 	CharacterAdded = true, CharacterRemoving = true,
+	Triggered = true, TriggerEnded = true, PromptShown = true, PromptHidden = true, MoveToFinished = true,
+	Touched = true, TouchEnded = true, Running = true, Died = true, Seated = true, Ended = true, Stopped = true,
 }
 
 local Instance = {}
@@ -203,7 +220,19 @@ local function newInstance(className: string, name: string?)
 		TextTransparency = 0,
 		Text = if className == "TextLabel" or className == "TextButton" or className == "TextBox" then "Label" else nil,
 	}
-	local inst = { _children = {}, _props = props, _events = {}, _signals = {}, _attrs = {} }
+	if BASE_PART[className] then
+		props.CFrame = Math3D.CFrame.new()
+		props.Size = Math3D.Vector3.new(4, 1, 2)
+		props.Anchored = false
+		props.CanCollide = true
+		props.CanTouch = true
+		props.CanQuery = true
+		props.Transparency = 0
+		props.CastShadow = true
+	elseif className == "Model" then
+		props.WorldPivot = nil
+	end
+	local inst = { _children = {}, _props = props, _events = {}, _signals = {}, _attrs = {}, _tags = {} }
 	local parent = nil
 	local mt = {}
 	mt.__index = function(self, key)
@@ -211,6 +240,9 @@ local function newInstance(className: string, name: string?)
 			return parent
 		end
 		local props = rawget(self, "_props")
+		if key == "Position" and props.CFrame and BASE_PART[props.ClassName] then
+			return props.CFrame.Position
+		end
 		local value = props[key]
 		if value ~= nil then
 			return value
@@ -245,7 +277,12 @@ local function newInstance(className: string, name: string?)
 				table.insert(rawget(value, "_children"), self)
 			end
 		else
-			rawget(self, "_props")[key] = value
+			local props = rawget(self, "_props")
+			if key == "Position" and BASE_PART[props.ClassName] then
+				key = "CFrame"
+				value = props.CFrame.Rotation + value
+			end
+			props[key] = value
 			local signal = rawget(self, "_signals")[key]
 			if signal then
 				signal:Fire()
@@ -343,7 +380,222 @@ end
 function Instance:Destroy()
 	self.Parent = nil
 	rawset(self, "_destroyed", true)
+	local destroying = rawget(self, "_events").Destroying
+	if destroying then
+		destroying:Fire()
+	end
 end
+function Instance:ClearAllChildren()
+	for _, child in ipairs(self:GetChildren()) do
+		child:Destroy()
+	end
+end
+function Instance:IsDescendantOf(ancestor)
+	local node = self.Parent
+	while node do
+		if node == ancestor then
+			return true
+		end
+		node = node.Parent
+	end
+	return false
+end
+function Instance:FindFirstAncestorOfClass(className)
+	local node = self.Parent
+	while node do
+		if node.ClassName == className then
+			return node
+		end
+		node = node.Parent
+	end
+	return nil
+end
+function Instance:FindFirstAncestorWhichIsA(className)
+	local node = self.Parent
+	while node do
+		if node:IsA(className) then
+			return node
+		end
+		node = node.Parent
+	end
+	return nil
+end
+function Instance:FindFirstAncestor(name)
+	local node = self.Parent
+	while node do
+		if node.Name == name then
+			return node
+		end
+		node = node.Parent
+	end
+	return nil
+end
+function Instance:GetFullName()
+	local parts = { self.Name }
+	local node = self.Parent
+	while node and node.ClassName ~= "DataModel" do
+		table.insert(parts, 1, node.Name)
+		node = node.Parent
+	end
+	return table.concat(parts, ".")
+end
+function Instance:Clone()
+	local copy = Harness.newInstance(self.ClassName, self.Name)
+	for key, value in pairs(rawget(self, "_props")) do
+		rawget(copy, "_props")[key] = value
+	end
+	for key, value in pairs(rawget(self, "_attrs")) do
+		rawget(copy, "_attrs")[key] = value
+	end
+	for tag in pairs(rawget(self, "_tags")) do
+		rawget(copy, "_tags")[tag] = true
+	end
+	for _, child in ipairs(rawget(self, "_children")) do
+		child:Clone().Parent = copy
+	end
+	return copy
+end
+function Instance:AddTag(tag)
+	rawget(self, "_tags")[tag] = true
+	if Harness.onTagAdded then
+		Harness.onTagAdded(self, tag)
+	end
+end
+function Instance:RemoveTag(tag)
+	rawget(self, "_tags")[tag] = nil
+end
+function Instance:HasTag(tag)
+	return rawget(self, "_tags")[tag] == true
+end
+function Instance:GetTags()
+	local out = {}
+	for tag in pairs(rawget(self, "_tags")) do
+		table.insert(out, tag)
+	end
+	return out
+end
+-- PVInstance pivots (BaseParts and Models).
+local function partsOf(inst)
+	local out = {}
+	if BASE_PART[inst.ClassName] then
+		table.insert(out, inst)
+	end
+	for _, d in ipairs(inst:GetDescendants()) do
+		if BASE_PART[d.ClassName] then
+			table.insert(out, d)
+		end
+	end
+	return out
+end
+Harness.partsOf = partsOf
+function Instance:GetPivot()
+	if BASE_PART[self.ClassName] then
+		return self.CFrame
+	end
+	local primary = rawget(self, "_props").PrimaryPart
+	if primary then
+		return primary.CFrame
+	end
+	local pivot = rawget(self, "_props").WorldPivot
+	if pivot then
+		return pivot
+	end
+	local cf, size = self:GetBoundingBox()
+	return cf
+end
+function Instance:PivotTo(target)
+	local delta = target * self:GetPivot():Inverse()
+	for _, part in ipairs(partsOf(self)) do
+		part.CFrame = delta * part.CFrame
+	end
+	local props = rawget(self, "_props")
+	if props.WorldPivot and not props.PrimaryPart then
+		props.WorldPivot = delta * props.WorldPivot
+	end
+end
+function Instance:GetBoundingBox()
+	local V3 = Math3D.Vector3
+	local minV, maxV
+	for _, part in ipairs(partsOf(self)) do
+		local half = part.Size / 2
+		for _, sx in ipairs({ -1, 1 }) do
+			for _, sy in ipairs({ -1, 1 }) do
+				for _, sz in ipairs({ -1, 1 }) do
+					local corner = part.CFrame * V3.new(half.X * sx, half.Y * sy, half.Z * sz)
+					minV = if minV then minV:Min(corner) else corner
+					maxV = if maxV then maxV:Max(corner) else corner
+				end
+			end
+		end
+	end
+	if not minV then
+		return Math3D.CFrame.new(), V3.zero
+	end
+	return Math3D.CFrame.new((minV + maxV) / 2), maxV - minV
+end
+function Instance:GetExtentsSize()
+	local _, size = self:GetBoundingBox()
+	return size
+end
+function Instance:MoveTo(target)
+	if self.ClassName == "Humanoid" then
+		rawset(self, "_moveTarget", target)
+		local model = self.Parent
+		local root = model and model:FindFirstChild("HumanoidRootPart")
+		local finished = self.MoveToFinished
+		task.defer(function()
+			if root then
+				model:PivotTo(root.CFrame.Rotation + target + Math3D.Vector3.new(0, root.CFrame.Y - target.Y, 0))
+			end
+			finished:Fire(true)
+		end)
+	else
+		self:PivotTo(Math3D.CFrame.new(target))
+	end
+end
+function Instance:LoadAnimation(animation)
+	local track = { Animation = animation, IsPlaying = false, Looped = false, Speed = 1, Length = 1, Stopped = Harness.fakeEvent(), Ended = Harness.fakeEvent() }
+	function track:Play()
+		self.IsPlaying = true
+	end
+	function track:Stop()
+		self.IsPlaying = false
+		self.Stopped:Fire()
+	end
+	function track:AdjustSpeed(speed)
+		self.Speed = speed
+	end
+	function track:Destroy() end
+	local loaded = rawget(self, "_tracks") or {}
+	rawset(self, "_tracks", loaded)
+	table.insert(loaded, track)
+	return track
+end
+function Instance:GetPlayingAnimationTracks()
+	local out = {}
+	for _, track in ipairs(rawget(self, "_tracks") or {}) do
+		if track.IsPlaying then
+			table.insert(out, track)
+		end
+	end
+	return out
+end
+function Instance:Play()
+	rawset(self, "IsPlaying", true)
+end
+function Instance:Stop()
+	rawset(self, "IsPlaying", false)
+end
+function Instance:Emit(count)
+	rawset(self, "Emitted", (rawget(self, "Emitted") or 0) + (count or 1))
+end
+function Instance:ChangeState(state)
+	rawset(self, "_state", state)
+end
+function Instance:GetState()
+	return rawget(self, "_state") or Harness.Enum.HumanoidStateType.Running
+end
+function Instance:SetStateEnabled() end
 function Instance:Kick(message)
 	rawset(self, "KickedWith", message)
 	self.Parent = nil
@@ -406,6 +658,26 @@ function Harness.new(options)
 	newInstance("BloomEffect").Parent = Lighting
 	local SoundService = newInstance("SoundService", "SoundService")
 	SoundService.Parent = DataModel
+	local Workspace = newInstance("Workspace", "Workspace")
+	Workspace.Parent = DataModel
+	Workspace.Gravity = 196.2
+	local camera = newInstance("Camera", "Camera")
+	camera.CFrame = Math3D.CFrame.new(0, 20, 30)
+	camera.FieldOfView = 70
+	camera.CameraType = FakeEnum.CameraType.Custom
+	camera.Parent = Workspace
+	Workspace.CurrentCamera = camera
+	local terrain = newInstance("Terrain", "Terrain")
+	terrain.Parent = Workspace
+	Workspace.Terrain = terrain
+	local serverTimeOffset = 0
+	rawset(Workspace, "GetServerTimeNow", function()
+		return os.clock() + serverTimeOffset + 1.7e9
+	end)
+	function self.setServerTimeOffset(seconds: number)
+		serverTimeOffset = seconds
+	end
+	self.workspace = Workspace
 
 	-- Errors thrown inside spawned threads are recorded so tests can fail on them.
 	self.errors = {}
@@ -441,6 +713,42 @@ function Harness.new(options)
 
 	PlayersService.PlayerAdded = fakeEvent()
 	PlayersService.PlayerRemoving = fakeEvent()
+	PlayersService.CharacterAutoLoads = true
+	-- Builds a simple R15-shaped rig (enough parts for the world code).
+	local function makeRig(name)
+		local model = newInstance("Model", name or "Rig")
+		local V3, CF = Math3D.Vector3, Math3D.CFrame
+		local function part(partName, size, y)
+			local p = newInstance("Part", partName)
+			p.Size = size
+			p.CFrame = CF.new(0, y, 0)
+			p.Parent = model
+			return p
+		end
+		local root = part("HumanoidRootPart", V3.new(2, 2, 1), 3)
+		root.Transparency = 1
+		part("LowerTorso", V3.new(2, 0.4, 1), 2.6)
+		part("UpperTorso", V3.new(2, 1.6, 1), 3.6)
+		part("Head", V3.new(1.2, 1.2, 1.2), 5)
+		for _, limb in ipairs({ "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg" }) do
+			part(limb, V3.new(1, 1.4, 1), 2)
+		end
+		local humanoid = newInstance("Humanoid", "Humanoid")
+		humanoid.WalkSpeed = 16
+		humanoid.HipHeight = 2
+		humanoid.Parent = model
+		newInstance("Animator", "Animator").Parent = humanoid
+		model.PrimaryPart = root
+		return model
+	end
+	self.makeRig = makeRig
+	PlayersService.CreateHumanoidModelFromDescription = function(_, description, rigType)
+		assert(description and description.ClassName == "HumanoidDescription", "CreateHumanoidModelFromDescription needs a HumanoidDescription")
+		local rig = makeRig("NPC")
+		rawset(rig, "_description", description)
+		rawset(rig, "_rigType", rigType)
+		return rig
+	end
 	PlayersService.GetPlayers = function()
 		local list = {}
 		for _, child in ipairs(PlayersService:GetChildren()) do
@@ -451,8 +759,64 @@ function Harness.new(options)
 		return list
 	end
 
+	local tagSignals = {}
+	local function tagSignal(tag)
+		tagSignals[tag] = tagSignals[tag] or fakeEvent()
+		return tagSignals[tag]
+	end
+	local CollectionService = {
+		AddTag = function(_, inst, tag)
+			rawget(inst, "_tags")[tag] = true
+			tagSignal(tag):Fire(inst)
+		end,
+		RemoveTag = function(_, inst, tag)
+			rawget(inst, "_tags")[tag] = nil
+		end,
+		HasTag = function(_, inst, tag)
+			return rawget(inst, "_tags")[tag] == true
+		end,
+		GetTags = function(_, inst)
+			return inst:GetTags()
+		end,
+		GetTagged = function(_, tag)
+			local out = {}
+			for _, d in ipairs(DataModel:GetDescendants()) do
+				if rawget(d, "_tags")[tag] then
+					table.insert(out, d)
+				end
+			end
+			return out
+		end,
+		GetInstanceAddedSignal = function(_, tag)
+			return tagSignal(tag)
+		end,
+		GetInstanceRemovedSignal = function(_, tag)
+			return tagSignal("__removed__" .. tag)
+		end,
+	}
+	self.CollectionService = CollectionService
+	-- Tagged instances that arrive later (e.g. replicated from the server) announce themselves.
+	function self.announceTags(root)
+		for _, d in ipairs(root:GetDescendants()) do
+			for tag in pairs(rawget(d, "_tags")) do
+				tagSignal(tag):Fire(d)
+			end
+		end
+	end
+
 	local closeHandlers = {}
 	local services = {
+		Workspace = Workspace,
+		CollectionService = CollectionService,
+		ProximityPromptService = { Enabled = true, PromptTriggered = fakeEvent(), PromptShown = fakeEvent(), PromptHidden = fakeEvent() },
+		Debris = { AddItem = function(_, inst, lifetime)
+			task.delay(lifetime or 10, function()
+				inst:Destroy()
+			end)
+		end },
+		StarterGui = { SetCoreGuiEnabled = function() end, SetCore = function() end, GetCoreGuiEnabled = function()
+			return true
+		end },
 		ReplicatedStorage = ReplicatedStorage,
 		ServerScriptService = ServerScriptService,
 		Players = PlayersService,
@@ -466,6 +830,11 @@ function Harness.new(options)
 			IsStudio = function()
 				return options.IsStudio == true
 			end,
+			Heartbeat = fakeEvent(),
+			RenderStepped = fakeEvent(),
+			Stepped = fakeEvent(),
+			BindToRenderStep = function() end,
+			UnbindFromRenderStep = function() end,
 		},
 		TextService = {
 			FilterStringAsync = function(_, text)
@@ -602,13 +971,26 @@ function Harness.new(options)
 	end
 
 	env = {
-		print = print, pairs = pairs, ipairs = ipairs, next = next, type = type, typeof = typeof,
+		print = print, pairs = pairs, ipairs = ipairs, next = next, type = type,
+		typeof = function(value)
+			if type(value) == "table" then
+				if rawget(value, "_props") then
+					return "Instance"
+				end
+				local kind = rawget(value, "_type")
+				if kind then
+					return kind
+				end
+			end
+			return typeof(value)
+		end,
 		tostring = tostring, tonumber = tonumber, select = select, error = error, assert = assert,
 		pcall = pcall, xpcall = xpcall, setmetatable = setmetatable, getmetatable = getmetatable,
 		rawget = rawget, rawset = rawset, rawequal = rawequal, unpack = unpack,
 		table = table, math = math, string = string, os = os, utf8 = utf8, coroutine = coroutine,
 		bit32 = bit32, buffer = buffer,
 		game = game,
+		workspace = Workspace,
 		debug = debug,
 		task = guardedTask,
 		require = requireNode,
@@ -685,6 +1067,20 @@ function Harness.new(options)
 		return player
 	end
 
+	-- Gives a player a character standing at `position` (Vector3).
+	function self.spawnCharacter(player, position)
+		local old = player.Character
+		if old then
+			old:Destroy()
+		end
+		local rig = makeRig(player.Name)
+		rig.Parent = Workspace
+		rig:PivotTo(Math3D.CFrame.new(position or Math3D.Vector3.new(0, 3, 0)))
+		player.Character = rig
+		player.CharacterAdded:Fire(rig)
+		return rig
+	end
+
 	function self.removePlayer(player)
 		PlayersService.PlayerRemoving:Fire(player)
 		player.Parent = nil
@@ -717,6 +1113,21 @@ local function copy(v)
 	end
 	return c
 end
+-- Stand-in for Roblox replication: copies server.workspace[name] into the
+-- client's workspace (replacing the old copy) and announces its tags.
+function Harness.replicate(server, client, name)
+	local source = server.workspace:FindFirstChild(name)
+	assert(source, "replicate: server has no workspace." .. tostring(name))
+	local old = client.workspace:FindFirstChild(name)
+	if old then
+		old:Destroy()
+	end
+	local copy = source:Clone()
+	copy.Parent = client.workspace
+	client.announceTags(copy)
+	return copy
+end
+
 function Harness.bridge(server, client, serverPlayer)
 	local serverFolder = server.game.ReplicatedStorage:WaitForChild("Remotes")
 	local folder = newInstance("Folder", "Remotes")

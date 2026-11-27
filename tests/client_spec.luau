@@ -669,6 +669,21 @@ return function(H)
 		local clean, report = phone.noErrors()
 		ok(clean, report)
 	end)
+	test("Explore mode and the HUD fit a phone", function()
+		phone.click(phone.button(phone.screen("Inventory"), "Back"), 0.3)
+		phone.click(phone.button(phone.screen("Menu"), "Explore Lifeville"), 0.4)
+		eq(phone.UI.Current(), "Explore")
+		local topBar = phone.screen("Explore"):FindFirstChild("TopBar", true)
+		eq(topBar.Size.Y.Offset, 112, "two rows on a phone")
+		ok(topBar:FindFirstChild("Row2"), "chips on the second row")
+		eq(topBar:FindFirstChild("NextDecision", true).Size.X.Offset, 50, "compact Next button")
+		phone.click(topBar:FindFirstChild("NextDecision", true), 0.4)
+		eq(phone.UI.Current(), "Game")
+		local identity = phone.screen("Game").HUD:FindFirstChild("Identity", true)
+		ok(identity.Size.X.Offset >= 60, ("the name still fits next to %s HUD buttons (%d px)"):format("7", identity.Size.X.Offset))
+		local clean, report = phone.noErrors()
+		ok(clean, report)
+	end)
 	phone.server.close()
 
 	section("Client UI: phone landscape (844×390) + live resize")
@@ -921,4 +936,287 @@ return function(H)
 		ok(clean, report)
 	end)
 	storeServer.close()
+
+	section("Client UI: exploring Lifeville (Phase 8)")
+	local townServer = newServer("ui-town")
+	local walker = bootClient(townServer, 900, { Name = "Walker" })
+	H.replicate(townServer, walker.client, "World") -- stand-in for Roblox replication
+	local V3 = H.Datatypes.Vector3.new
+	local Explore = walker.client.require("StarterPlayerScripts.Client.Controllers.ExploreController")
+	local Gates = walker.client.require("StarterPlayerScripts.Client.Controllers.GatesController")
+	local DayNight = walker.client.require("StarterPlayerScripts.Client.Controllers.DayNightController")
+	local Doors = walker.client.require("StarterPlayerScripts.Client.Controllers.DoorsController")
+	local Traffic = walker.client.require("StarterPlayerScripts.Client.Controllers.TrafficController")
+	local MapC = walker.client.require("StarterPlayerScripts.Client.Controllers.MapController")
+	local WorldData = walker.client.require("ReplicatedStorage.Shared.Data.World")
+	local ServerWorld = townServer.require("ServerScriptService.Server.Services.WorldService")
+	local ServerNPCs = townServer.require("ServerScriptService.Server.Services.NPCService")
+	local promptService = walker.client.game:GetService("ProximityPromptService")
+	local clientTags = walker.client.CollectionService
+	local overlay = walker.gui.CYL_Overlay.Root
+	local localPlayer = walker.client.game.Players.LocalPlayer
+	-- Moves the character on the server (for its checks) and on the client.
+	local function moveTo(position)
+		townServer.spawnCharacter(walker.player, position)
+		walker.client.spawnCharacter(localPlayer, position)
+	end
+	local function clientSpot(spotId)
+		for _, part in ipairs(clientTags:GetTagged("CYL_Spot")) do
+			if part:GetAttribute("CYL_Spot") == spotId then
+				return part
+			end
+		end
+		return nil
+	end
+	local function trigger(prompt)
+		promptService.PromptTriggered:Fire(prompt, localPlayer)
+		task.wait(0.3)
+	end
+	local function bar()
+		return walker.screen("Explore"):FindFirstChild("TopBar", true)
+	end
+	moveTo(V3(0, 3, 32))
+
+	test("Explore from the HUD: the 3D town shows, prompts switch on, the bar shows your life", function()
+		walker.click(walker.button(walker.screen("Menu"), "Play"), 0.3)
+		walker.click(walker.button(walker.screen("NameEntry"), "Start Life"), 0.6)
+		eq(walker.UI.Current(), "Game")
+		eq(promptService.Enabled, false, "prompts are off while playing the cards")
+		walker.click(walker.screen("Game").HUD:FindFirstChild("Explore", true), 0.4)
+		eq(walker.UI.Current(), "Explore")
+		eq(walker.gui.CYL_Backdrop.Backdrop.Visible, false, "the menu backdrop hides so the world shows")
+		eq(promptService.Enabled, true)
+		ok(bar(), "top bar")
+		ok(bar():FindFirstChild("ActionsLeft", true).Label.Text:find("2/2", 1, true), "2 actions")
+		ok(bar():FindFirstChild("Money", true).Label.Text:find("💰", 1, true), "money")
+		ok(walker.label(walker.screen("Explore"), "Age 5"), "age line")
+	end)
+
+	test("District banners; areas that open later are walled for a child, with a sign", function()
+		local school = WorldData.ById.School
+		moveTo(V3(school.X, 3, school.Z + 40))
+		task.wait(0.7)
+		eq(Explore.CurrentDistrict(), "School")
+		local banner = walker.screen("Explore"):FindFirstChild("Banner", true)
+		ok(banner.Title.Text:find("Maple School", 1, true), "banner: " .. banner.Title.Text)
+		local downtownWalls, labelled = 0, false
+		for _, wall in ipairs(clientTags:GetTagged("CYL_Lock")) do
+			if wall:GetAttribute("LockId") == "Downtown" then
+				downtownWalls += 1
+				eq(wall.CanCollide, true, "solid for a child")
+				local gui = wall:FindFirstChild("CYL_LockLabelFront") or wall:FindFirstChild("CYL_LockLabelLeft")
+				if gui and gui.Label.Text:find("Teenage Years", 1, true) then
+					labelled = true
+				end
+			end
+		end
+		eq(downtownWalls, 4)
+		ok(labelled, "walls say when Downtown opens")
+		local downtown = WorldData.ById.Downtown
+		walker.client.spawnCharacter(localPlayer, V3(downtown.X, 3, downtown.Z))
+		Gates.Refresh()
+		local root = localPlayer.Character.HumanoidRootPart
+		eq(WorldData.DistrictAt(root.Position.X, root.Position.Z), "Plaza", "standing somewhere locked sends you back to the Plaza")
+	end)
+
+	test("Using a spot through its prompt: the server applies it and a result card appears", function()
+		local spot = clientSpot("School_Study")
+		ok(spot, "School_Study replicated to the client")
+		moveTo(spot.Position)
+		local before = walker.data().Slots.Slot1.Stats.Intelligence
+		trigger(spot.Prompt)
+		ok(walker.data().Slots.Slot1.Stats.Intelligence > before, "studied on the server")
+		local card = walker.screen("Explore"):FindFirstChild("ResultCard", true)
+		ok(card.Visible and card.Title.Text:find("Study hard", 1, true), "result card")
+		ok(walker.label(card, "🧠 +"), "shows the Intelligence gain")
+		ok(bar():FindFirstChild("ActionsLeft", true).Label.Text:find("1/2", 1, true), "1 action left")
+	end)
+
+	test("Prompts are personalised: shifts hidden without the job, age locks marked", function()
+		Explore.RefreshPrompts()
+		eq(clientSpot("Hospital_Shift").Prompt.Enabled, false, "no Work a shift for a child")
+		ok(clientSpot("Park_Gym").Prompt.ActionText:find("🔒", 1, true), "gym marked 13+")
+		ok(clientSpot("Restaurant_Eat").Prompt.ActionText == "Eat out", "free for children")
+	end)
+
+	test("Talking to an NPC: their line, and their action works next to them", function()
+		local position = ServerNPCs.PositionOf("Teacher")
+		moveTo(position + V3(3, 0, 0))
+		local rig = walker.client.workspace.World.NPCs:FindFirstChild("NPC_Teacher")
+		ok(rig, "the teacher replicated")
+		trigger(rig.HumanoidRootPart.TalkPrompt)
+		local modal = overlay:FindFirstChild("DialogueModal")
+		ok(modal, "dialogue opens")
+		ok(walker.label(modal, "Studying at your desk"), "a line for children")
+		walker.click(walker.button(modal, "Help me study"), 0.4)
+		ok(walker.label(overlay:FindFirstChild("DialogueModal"), "0 actions left"), "the dialogue shows the budget")
+		local card = walker.screen("Explore"):FindFirstChild("ResultCard", true)
+		ok(card.Body.Text:find("last action", 1, true), "result card says that was the last action")
+		walker.UI.ClosePanel()
+		task.wait(0.3)
+		local library = clientSpot("School_Library")
+		moveTo(library.Position)
+		trigger(library.Prompt)
+		ok(card.Body.Text:find("No actions left", 1, true), "out of actions: " .. card.Body.Text)
+	end)
+
+	test("Next decision returns to the cards; deciding refreshes the actions", function()
+		walker.click(bar():FindFirstChild("NextDecision", true), 0.4)
+		eq(walker.UI.Current(), "Game")
+		eq(promptService.Enabled, false, "prompts off again")
+		walker.decide()
+		walker.continue()
+		walker.click(walker.screen("Game").HUD:FindFirstChild("Explore", true), 0.4)
+		ok(bar():FindFirstChild("ActionsLeft", true).Label.Text:find("2/2", 1, true), "2 new actions")
+	end)
+
+	test("The map shows every district (locked ones too) and sets a waypoint", function()
+		walker.click(bar():FindFirstChild("Map", true), 0.3)
+		local modal = overlay:FindFirstChild("MapModal")
+		ok(modal, "map opens")
+		for _, d in ipairs(WorldData.Districts) do
+			ok(modal:FindFirstChild("District_" .. d.Id, true), "map shows " .. d.Id)
+		end
+		eq(modal:FindFirstChild("District_Downtown", true).Icon.Text, "🔒", "Downtown locked for a child")
+		ok(modal:FindFirstChild("You", true), "you are here")
+		walker.click(modal:FindFirstChild("District_Park", true).Go, 0.3)
+		eq(MapC.Waypoint(), "Park")
+		ok(walker.client.workspace:FindFirstChild("CYL_Waypoint"), "waypoint marker")
+		ok(walker.client.workspace.CYL_Waypoint:FindFirstChild("Guide"), "guide line")
+		local park = WorldData.ById.Park
+		moveTo(V3(park.X, 3, park.Z))
+		task.wait(0.8)
+		eq(MapC.Waypoint(), nil, "cleared on arrival")
+	end)
+
+	test("Shortcut spots open screens: the Hall of Lives and the boutique", function()
+		local hall = clientSpot("Plaza_Hall")
+		moveTo(hall.Position)
+		trigger(hall.Prompt)
+		eq(walker.UI.Current(), "SlotSelect", "Hall of Lives → choose a life")
+		walker.UI.Back()
+		task.wait(0.3)
+		eq(walker.UI.Current(), "Explore", "back to exploring")
+		trigger(clientSpot("Boutique_Shop").Prompt)
+		eq(walker.UI.Current(), "Shop")
+		walker.UI.Back()
+		task.wait(0.3)
+		eq(walker.UI.Current(), "Explore")
+		local texts = {}
+		for _, pedestal in ipairs(clientTags:GetTagged("CYL_Pedestal")) do
+			texts[pedestal:GetAttribute("Slot")] = pedestal.Text.Label.Text
+		end
+		local lifeName = walker.data().Slots.Slot1.Name
+		ok(texts.Slot1:find(lifeName, 1, true), "Slot 1 pedestal shows your life: " .. texts.Slot1)
+		ok(texts.Slot2:find("Empty", 1, true), "empty slots say so")
+	end)
+
+	test("Night: lamps glow and windows light up; day turns them off", function()
+		local length = WorldData.DayLengthSeconds
+		local now = walker.client.workspace:GetServerTimeNow()
+		walker.client.setServerTimeOffset(length * 0.5 - now % length) -- 21:00
+		DayNight.Step()
+		eq(DayNight.IsNight(), true)
+		local lamp = clientTags:GetTagged("CYL_Lamp")[1]
+		eq(lamp.Material, H.Enum.Material.Neon)
+		eq(lamp.Light.Enabled, true, "lamps light up (High graphics)")
+		local window = clientTags:GetTagged("CYL_Window")[1]
+		eq(window.Material, H.Enum.Material.Neon, "windows glow")
+		walker.client.setServerTimeOffset(length * 0.2 - now % length) -- 13:48
+		DayNight.Step()
+		eq(DayNight.IsNight(), false)
+		eq(lamp.Light.Enabled, false)
+		eq(window.Material, H.Enum.Material.Glass, "windows back to glass")
+		ok(math.abs(walker.client.game.Lighting.ClockTime - WorldData.ClockTimeAt(walker.client.workspace:GetServerTimeNow())) < 0.1, "the sky follows the shared clock")
+	end)
+
+	test("Sliding doors open for nearby characters; cars drive while exploring", function()
+		local panel = clientTags:GetTagged("CYL_Door")[1]
+		local closed = panel.CFrame
+		moveTo(closed.Position + V3(0, 0, 2))
+		Doors.Step()
+		ok((panel.CFrame.Position - closed.Position).Magnitude > 1, "door slid open")
+		moveTo(V3(0, 3, 32))
+		Doors.Step()
+		ok((panel.CFrame.Position - closed.Position).Magnitude < 0.01, "and closed again")
+		local cars = Traffic.Cars()
+		eq(#cars, Traffic.HighCount, "traffic on High graphics")
+		local start = cars[1].Model:GetPivot().Position
+		Traffic.Step(1)
+		ok((cars[1].Model:GetPivot().Position - start).Magnitude > 10, "cars move")
+		ok(walker.client.workspace:FindFirstChild("CYL_Traffic"), "visible while exploring")
+	end)
+
+	test("Your Oak Street home: your plot, your rest spot", function()
+		local plot = nil
+		for _, p in ipairs(walker.client.workspace.World.Plots:GetChildren()) do
+			if p:GetAttribute("OwnerUserId") == 900 then
+				plot = p
+			end
+		end
+		ok(plot, "a plot is yours")
+		ok(plot.NameSign.Board.Text.Label.Text:find("Walker", 1, true), "your name on the sign")
+		Explore.RefreshPrompts()
+		local rest = nil
+		for _, part in ipairs(plot:GetDescendants()) do
+			if part:IsA("BasePart") and part:GetAttribute("CYL_Spot") == "Home_Rest" then
+				rest = part
+			end
+		end
+		ok(rest and rest.Prompt.Enabled, "Rest at home is offered in your house")
+		moveTo(ServerWorld.HomeSpot(walker.player, "Home_Rest").Position)
+		trigger(rest.Prompt)
+		local card = walker.screen("Explore"):FindFirstChild("ResultCard", true)
+		ok(card.Title.Text:find("Rest at home ✓", 1, true), "rested: " .. card.Title.Text .. " / " .. card.Body.Text)
+	end)
+
+	test("The Life Reveal flies the camera over the real place, then restores everything", function()
+		local Reveal = walker.client.require("StarterPlayerScripts.Client.Controllers.RevealController")
+		local Showcase = walker.client.require("StarterPlayerScripts.Client.Controllers.ShowcaseController")
+		local RevealLib = townServer.require("ServerScriptService.Server.Lib.Reveal")
+		local TableUtil = townServer.require("ReplicatedStorage.Shared.Util.TableUtil")
+		local life = TableUtil.DeepCopy(walker.data().Slots.Slot1)
+		local payload = RevealLib.Stage(life, 1, H.Random.new(11))
+		payload.Twist = nil
+		payload.Archetype = "Luxury"
+		local camera = walker.client.workspace.CurrentCamera
+		local before = camera.CameraType
+		walker.Anim.Reduced = false
+		task.spawn(Reveal.PlayStage, payload)
+		local revealGui = walker.gui:FindFirstChild("CYL_Reveal")
+		local strip = nil
+		for _ = 1, 400 do
+			strip = revealGui:FindFirstChild("WorldShowcase", true)
+			if strip then
+				break
+			end
+			local tap = revealGui:FindFirstChild("Tap", true)
+			if tap then
+				tap.Activated:Fire()
+			end
+			task.wait(0.03)
+		end
+		ok(strip, "the flyover step plays")
+		ok(strip.Place.Text:find("Hilltop Mansion", 1, true), strip.Place.Text)
+		eq(camera.CameraType, H.Enum.CameraType.Scriptable, "camera flying")
+		eq(walker.gui.CYL_Main.Enabled, false, "menus hidden so the world shows")
+		ok(Showcase.IsActive())
+		ok(walker.finishReveal(), "reveal finishes")
+		task.wait(0.2)
+		walker.Anim.Reduced = true
+		eq(Showcase.IsActive(), false)
+		eq(camera.CameraType, before, "camera restored")
+		eq(walker.gui.CYL_Main.Enabled, true, "menus back")
+		ok(math.abs(walker.client.game.Lighting.ClockTime - WorldData.ClockTimeAt(walker.client.workspace:GetServerTimeNow())) < 0.1, "sky back on the shared clock")
+	end)
+
+	test("Leaving explore mode hides traffic; no errors anywhere", function()
+		walker.click(bar():FindFirstChild("Menu", true), 0.3)
+		eq(walker.UI.Current(), "Menu")
+		eq(walker.client.workspace:FindFirstChild("CYL_Traffic"), nil, "traffic hidden")
+		ok(walker.button(walker.screen("Menu"), "Explore Lifeville"), "explore from the menu too")
+		local clean, report = walker.noErrors()
+		ok(clean, report)
+	end)
+	townServer.close()
 end

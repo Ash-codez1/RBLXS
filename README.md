@@ -17,18 +17,60 @@ Built in Luau as a [Rojo](https://rojo.space) project, so every script is a plai
 | 5 | **Life Reveal**: calibrated predictions, twists, stage & final cinematics, ending titles, Life History, comparisons | ✅ Done |
 | 6 | **Multiplayer**: Life Circles, invites, group decisions with voting, group Life Reveals, city events, joining friends | ✅ Done |
 | 7 | **Shop & monetisation**: Coins, 81 cosmetics, previews, My Items, look shown in-game, Robux coin packs & passes | ✅ Done |
-| 8 | World and environment, music and sound | ⏳ Next |
-| 9 | Achievements, daily rewards, challenges, leaderboards | ⬜ |
+| 8 | **Lifeville, the 3D town**: 9 districts that open as you grow, 55 things to do, 34 townspeople, your own home, day & night, Life Reveal flyovers | ✅ Done |
+| 9 | Achievements, daily rewards, challenges, leaderboards | ⏳ Next |
 | 10–11 | Security hardening, testing, polish | ⬜ (core saving/security done in Phase 1) |
 
-**151 automated tests pass** (`lune run tests/run.luau`). They include:
+**182 automated tests pass** (`lune run tests/run.luau`). They include:
 - a simulation of 400 random lives from age 5 to 85;
 - a full life played through the real UI;
 - UI click-throughs on desktop, phone portrait, phone landscape and gamepad;
 - two players in one server (Life Circles, group votes, city events);
-- the shop and Robux purchases (receipts, passes, failed saves, spoofing attempts).
+- the shop and Robux purchases (receipts, passes, failed saves, spoofing attempts);
+- the generated town (layout, budgets, every spot and person in place) and walking it as a player: prompts, the server's checks, the map, day and night, doors, traffic, homes and the Life Reveal flyover.
 
 Nothing has been play-tested inside Roblox Studio yet; see §4.
+
+### Lifeville: the 3D town (Phase 8)
+
+![Lifeville from above](docs/lifeville-map.png)
+
+*The real generated layout, drawn from above by the test tools (`tests/tools/worldmap.luau` + `render_map.py`).*
+
+- **🌆 Explore** from the HUD (its first button) or the main menu. The menus fade away and you walk round Lifeville with your character. **📝 Next decision** takes you back to the cards.
+- **An island town of 9 districts, built by code when the server starts** (about 2,400 parts including people and houses):
+  - **Lifeville Plaza:** the spawn, the wishing fountain, the **Hall of Lives** (a pedestal for each save slot) and the town map.
+  - **Maple School:** classroom, library, staff room, playground and sports field.
+  - **Willow Park:** running track, duck pond, swings, outdoor gym, Willow Arena and the Sunset Club.
+  - **Oak Street:** player homes and the apartments.
+  - **St. Hope Hospital:** reception, wards, ambulance bay and helipad.
+  - **Downtown:** Lifeville Tower offices, the bank, the café, The Golden Fork, the boutique, and the cinema and arcade.
+  - **Harbour & Hilltop:** the beach, the pier, boats, the lighthouse and Hilltop Mansion.
+  - **Lifeville University:** lecture hall, campus library, evening classes and the student union.
+  - **Career Row:** the police station, Starlight Studios & Theatre, the science lab, the courthouse, the workshop and the town hall.
+- **The town grows with you:**
+  - Downtown and the harbour open at 13, the university and Career Row at 19, and the Sunset Club at 61.
+  - Until then a shimmering wall with a sign says when each one opens. The wall is only on your screen, and the server checks as well.
+- **Buildings you can walk into**, with sliding doors, furnished rooms, and chairs and benches you can sit on.
+- **55 things to do** (press **E**, tap, or press **X** on a gamepad). Each action uses one of your **2 actions between decisions**, the same allowance as the People panel, so nothing can be farmed:
+  - study, read, play football, lectures (if you have a university place), evening classes, runs, workouts, feeding the ducks, family picnics, check-ups, volunteering, eating out, chatting in the café, the arcade, films, shows, open-mic night, fishing, swimming, and a trip abroad (which makes you a Traveller);
+  - **work an extra shift** at your own workplace (every career has one) for part of your salary and some Career Success;
+  - shortcuts: the boutique opens the shop, the bank opens your money, the Hall of Lives lets you choose a life, and the notice board opens the map.
+  - Before anything happens, the server checks where you're standing, your age, job, university place, money and unlocks.
+- **28 townspeople to talk to**, plus 6 who walk round town. They include the mayor, teachers, a professor, a doctor and nurse, a waiter, a stylist, a judge and a harbour master.
+  - What they say depends on your age and career.
+  - They can do things with you (help you study, sell you an ice cream, book your trip), open screens, or show you the way.
+- **Your home on Oak Street:**
+  - Every player gets a plot (8 per server).
+  - The house matches your life: the family home as a child, then your own place, a family house or a mansion. Your shop house style, car and pet show up too.
+  - "Rest at home" and family dinners only work in your own house.
+- **🗺️ Town map:** what's open for you, where you are, and waypoints with a golden guide line.
+- **Day and night:**
+  - A full day lasts 12 minutes and is the same for everyone in the server (it runs from the server clock).
+  - Lamps and windows light up at night.
+  - Cars drive the roads, doors slide open, and each district has its own background sound once you add sound ids.
+- **Life Reveal flyover:** after the cinematic preview, the camera glides over the real place in Lifeville that matches your likely future: Hilltop Mansion, Lifeville Tower, Starlight Studios, the duck pond and so on.
+- **Performance:** everything is anchored, small props don't cast shadows, and streaming is off because the town is small. On Low graphics (automatic on phones), lamps glow without casting light and there are fewer cars.
 
 ### Playing with friends (Phase 6)
 
@@ -185,9 +227,12 @@ ReplicatedStorage
    │  ├─ LifeStages                    ModuleScript   6 stages, ages, decisions per stage
    │  ├─ Monetisation                  ModuleScript   game pass + developer product ids (paste yours, see §3)
    │  ├─ NamePool                      ModuleScript   names for the "Random" button
+   │  ├─ NPCs                          ModuleScript   Lifeville's townspeople: looks, lines, options
    │  ├─ SoundIds                      ModuleScript   audio asset ids (fill in, see §3)
    │  ├─ StatDefinitions               ModuleScript   the 8 stats
-   │  └─ Traits                        ModuleScript   13 personality traits
+   │  ├─ Traits                        ModuleScript   13 personality traits
+   │  ├─ World                         ModuleScript   districts, unlock ages, workplaces, flyover shots, day clock
+   │  └─ WorldSpots                    ModuleScript   the 55 things to do in town (effects, ages, costs)
    ├─ Net                              ModuleScript   (src/shared/Net/init.luau)
    │  └─ RemoteDefinitions             ModuleScript   every remote + rate limits
    └─ Util                             Folder
@@ -209,26 +254,55 @@ ServerScriptService
    ├─ Lib                              Folder
    │  ├─ Actions, CoinRewards, Conditions, Consequences, MockDataStore, RandomEvents,
    │  │  Reveal, ScenarioPicker, SessionLock, Validate, Yearly   ModuleScripts
-   └─ Services                         Folder
-      ├─ CityEventService, CosmeticsService, DataService, LifeService, PartyService,
-      │  RevealService, SettingsService, ShopService, StatService, StoreService  ModuleScripts
+   ├─ Services                         Folder
+   │  ├─ CityEventService, CosmeticsService, DataService, LifeService, NPCService,
+   │  │  PartyService, PlotService, RevealService, SettingsService, ShopService,
+   │  │  StatService, StoreService, WorldService                  ModuleScripts
+   └─ World                            Folder         builds Lifeville
+      ├─ Builder                       ModuleScript   parts, buildings with doorways, furniture, trees, lamps, cars, prompts
+      ├─ Homes                         ModuleScript   player houses on Oak Street
+      ├─ Town                          ModuleScript   island, sea, roads, lamps, locked-area walls, every district
+      └─ Districts                     Folder
+         ├─ CareerRow, Downtown, Harbour, Hospital, Park, Plaza,
+         │  Residential, School, University                        ModuleScripts
 
 StarterPlayer
 └─ StarterPlayerScripts
    └─ Client                           Folder
       ├─ Main                          LocalScript    (Main.client.luau)
       ├─ Controllers                   Folder
-      │  ├─ AudioController, ControlsController, DataController, DecisionController,
-      │  │  FinanceController, FriendsController, FutureController, GraphicsController,
-      │  │  HUDController, InventoryController, LifeHistoryController, LifestyleController,
-      │  │  LoadingController, MenuController, NotificationController, PartyController,
-      │  │  PeopleController, RevealController, SettingsController, SettingsMenu,
-      │  │  ShopController, StyleController, UIController                ModuleScripts
+      │  ├─ AmbienceController, AudioController, ControlsController, DataController,
+      │  │  DayNightController, DecisionController, DialogueController, DoorsController,
+      │  │  ExploreController, FinanceController, FriendsController, FutureController,
+      │  │  GatesController, GraphicsController, HUDController, InventoryController,
+      │  │  LifeHistoryController, LifestyleController, LoadingController, MapController,
+      │  │  MenuController, NotificationController, PartyController, PeopleController,
+      │  │  RevealController, SettingsController, SettingsMenu, ShopController,
+      │  │  ShowcaseController, StyleController, TrafficController, UIController   ModuleScripts
       └─ UILib                         Folder
          ├─ Anim, Avatar, Components, Create, Layout, Theme            ModuleScripts
 ```
 
-At runtime the game also creates `ReplicatedStorage.Remotes` (server), the `CYL_*` ScreenGuis in PlayerGui and the `CYL_Music` / `CYL_SFX` SoundGroups (client). **Don't create those yourself.** All UI is generated by code; there are no hand-made GUIs.
+```
+Workspace
+├─ SeaFloor                            Part           sand under the sea (from default.project.json)
+└─ SpawnLocation                       SpawnLocation  in Lifeville Plaza
+Lighting                                              ShadowMap lighting (project file)
+```
+
+At runtime the game also creates:
+- **server:** `ReplicatedStorage.Remotes`, **`Workspace.World` (the whole town)**, the sea (Terrain water), and the Lighting effects Atmosphere, Bloom, SunRays and WorldColour;
+- **client:** the `CYL_*` ScreenGuis in PlayerGui, the `CYL_Music` / `CYL_SFX` SoundGroups, and `Workspace.CYL_Traffic` (cars only you see).
+
+**Don't create those yourself.** All UI and the town are generated by code; there are no hand-made GUIs or models.
+
+**Want to edit the town by hand?** In Studio (not playing), run this in the Command Bar to bake it into your place:
+
+```lua
+require(game.ServerScriptService.Server.World.Town).Build(workspace)
+```
+
+WorldService then keeps your `Workspace.World` instead of generating a new one. People and houses still appear when the game runs. Code changes to the districts won't show until you delete the baked `World` and bake again.
 
 File naming (Rojo): `X.server.luau` → **Script**, `X.client.luau` → **LocalScript**, `X.luau` → **ModuleScript**, and a folder containing `init.luau` → a **ModuleScript** with children.
 
@@ -301,6 +375,10 @@ rojo build default.project.json -o build/ChooseYourLife.rbxlx
 ## 3. Things you need to add in Studio
 
 - **Sounds and music:** paste asset ids you have rights to (Toolbox → Audio) into `Shared/Data/SoundIds`. Empty ids are skipped, so the game is silent until then. The volume settings already control them.
+  - For Lifeville: `WorldMusic` (while exploring), one ambient loop per kind of district (`AmbientPlaza`, `AmbientSchool`, `AmbientPark`, `AmbientResidential`, `AmbientHospital`, `AmbientCity`, `AmbientHarbour`), `AmbientNight`, and `BuskerMusic` (heard near the busker in the Plaza).
+  - `Splash` (the wishing fountain) already works: it uses a sound built into Roblox.
+- **Animations:** the townspeople use Roblox's default character animations (idle, walk, wave, point, dance), so there's nothing to add.
+- **Max players (optional):** Oak Street has 8 house plots. If you want every player to get a home, set Game Settings → Places → Max Players to 8 or fewer. Anyone beyond 8 can still do everything except the home actions.
 - **Credits:** edit `Config.Credits`.
 - **Robux products (optional):** the game works fully without them, using Coins earned by playing.
   1. Publish the place (File → Publish to Roblox).
@@ -325,6 +403,6 @@ selene src
 Tests run the **real** `src/` files outside Roblox using [Lune](https://lune-org.github.io) and a fake Roblox API (`tests/harness.luau`). The client tests boot the real client against a real server harness, with remotes bridged and data deep-copied. They then click through the loading screen, menu, name entry, a whole life, the stats panel, settings, credits, save slots and delete confirmation, the shop (search, tabs, previews, buying, VIP, coin packs) and My Items. This runs at desktop, phone-portrait, phone-landscape (including rotating mid-decision) and gamepad layouts, and the tests fail on any script error.
 
 **What the harness can't check:** how things actually look, fonts, real tween timing, and real DataStore and text-filter behaviour. Please play-test in Studio. You should see:
-- Output shows `[Server] CHOOSE YOUR LIFE started with 10 services` and no red errors.
+- Output shows `[Server] CHOOSE YOUR LIFE started with 13 services` and no red errors.
 - The loading screen leads to the main menu. **Play** leads to name entry, then to decision cards.
 - Use Studio's **device emulator** (Test → Device) to check a phone and a tablet.

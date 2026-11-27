@@ -432,6 +432,17 @@ function UIController.SetBackdropColors(top: Color3?, bottom: Color3?)
 	end
 end
 
+-- Hides the menus and their backdrop so the 3D world shows through
+-- (the Life Reveal's flyover of real places in Lifeville).
+function UIController.SetWorldView(on: boolean)
+	if backdropGui then
+		backdropGui.Enabled = not on
+	end
+	if mainGui then
+		mainGui.Enabled = not on
+	end
+end
+
 function UIController.SetDecorations(enabled: boolean)
 	if not backdrop then
 		return
