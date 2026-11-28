@@ -45,6 +45,13 @@ return function(B, ctx)
 	B.Sign(f, "ArchSignSouth", ctx.At(0, 61.6, 180, 17.5), 30, 2.6, "WELCOME TO LIFEVILLE", "#6A4C93")
 	B.Sign(f, "ArchSignNorth", ctx.At(0, 58.4, 0, 17.5), 30, 2.6, "EVERY CHOICE SHAPES YOUR FUTURE", "#6A4C93")
 
+	-- Hall of Fame (LeaderboardService writes the top 5 here)
+	for _, x in ipairs({ -36.6, -27.4 }) do
+		B.Block(f, "FamePost", ctx.At(x, -24, 0, 0.16), 0.6, 4, 0.6, B.Palette.Black, Enum.Material.Metal)
+	end
+	local fame = B.Sign(f, "HallOfFame", ctx.At(-32, -24.3, 180, 8.6), 10, 9.4, "🏆 HALL OF FAME\nLoading…", "#3C2A4D", "#FFD60A")
+	game:GetService("CollectionService"):AddTag(fame, "CYL_HallOfFame")
+
 	-- Town map notice board
 	B.PostSign(f, "NoticeBoard", ctx.At(28, 22, 180), 9, "🗺️ TOWN MAP", "#2A9D8F")
 	B.Spot(f, "Plaza_Board", ctx.At(28, 25))
@@ -67,4 +74,8 @@ return function(B, ctx)
 	B.Cylinder(f, "BuskerStage", ctx.At(-26, 22, 0, 0.16), 7, 0.6, "#8D6E63", Enum.Material.WoodPlanks)
 	B.NPC(ctx.NPCs, "Busker", ctx.At(-26, 22, B.YawFacing(-26, 22, 0, 0), 0.76))
 	B.NPC(ctx.NPCs, "Mayor", ctx.At(10, 20, 180, 0.16))
+
+	-- Memory Stars
+	B.Star(f, "Star_HallOfLives", ctx.At(0, -57, 0, 0.16))
+	B.Star(f, "Star_Arch", ctx.At(19, 60, 0, 0.16))
 end

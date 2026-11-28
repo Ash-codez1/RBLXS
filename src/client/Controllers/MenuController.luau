@@ -18,6 +18,7 @@ local DataTemplate = require(Shared.Data.DataTemplate)
 local NamePool = require(Shared.Data.NamePool)
 local Format = require(Shared.Util.Format)
 local Careers = require(Shared.Data.Careers)
+local Legacy = require(Shared.Data.Legacy)
 
 local UILib = script.Parent.Parent:WaitForChild("UILib")
 local Theme = require(UILib.Theme)
@@ -46,6 +47,7 @@ local ERRORS = {
 	RateLimited = "Slow down a moment, then try again.",
 	NotLoaded = "Your data is still loading. Try again in a second.",
 	EmptySlot = "That save slot is empty.",
+	PerkLocked = "That Legacy perk isn't unlocked yet. Complete more lives to earn it.",
 }
 local function errorText(reason: any): string
 	return ERRORS[reason] or "Something went wrong. Please try again."
@@ -131,12 +133,27 @@ local MENU_ITEMS = {
 		UIController.Show("SlotSelect", "New")
 	end },
 	{ Text = "Explore Lifeville", Icon = "🌆", Screen = "Explore" },
+	{ Id = "Daily", Text = "Daily Reward", Icon = "🎁", Action = function()
+		require(script.Parent.DailyController).Open()
+	end, TextFn = function()
+		return if require(script.Parent.DailyController).IsClaimable() then "Daily Reward ✨" else "Daily Reward"
+	end },
 	{ Text = "Shop", Icon = "🛍️", Screen = "Shop" },
 	{ Text = "My Items", Icon = "🎒", Screen = "Inventory" },
 	{ Text = "Achievements", Icon = "🏆", Screen = "Achievements" },
 	{ Text = "Leaderboards", Icon = "📈", Screen = "Leaderboards" },
 	{ Text = "Life History", Icon = "📜", Screen = "LifeHistory" },
+	{ Id = "Profile", Text = "Profile", Icon = "👤", Action = function()
+		require(script.Parent.ProfileController).Open()
+	end },
+	{ Id = "Notifications", Text = "Notifications", Icon = "🔔", Action = function()
+		NotificationController.OpenInbox()
+	end, TextFn = function()
+		local unread = NotificationController.Unread()
+		return if unread > 0 then ("Notifications (%d)"):format(unread) else "Notifications"
+	end },
 	{ Text = "Settings", Icon = "⚙️", Screen = "Settings" },
+	{ Text = "Help", Icon = "❓", Screen = "Help" },
 	{ Text = "Credits", Icon = "🎬", Screen = "Credits" },
 }
 
@@ -290,7 +307,8 @@ local function renderMenu()
 		end
 		order += 1
 		local button = Components.Button({
-			Text = item.Text,
+			Name = "Menu_" .. (item.Id or item.Screen or item.Text:gsub("%s", "")),
+			Text = if item.TextFn then item.TextFn(data) else item.Text,
 			Icon = item.Icon,
 			Style = "Secondary",
 			TextSize = 19,
@@ -515,7 +533,7 @@ local function renderNameEntry()
 		Parent = panel,
 	}, { Create.Corner(Theme.RadiusSmall), Create.Stroke(Theme.Color.Stroke, 2, 0.2) })
 	local counter = Create.Label({ Text = "", TextSize = Theme.TextSize.Tiny, TextColor3 = Theme.Color.TextFaint, TextXAlignment = Enum.TextXAlignment.Right, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = 5, Parent = panel })
-	local errorLabel = Create.Label({ Text = "", TextSize = Theme.TextSize.Small, TextColor3 = Theme.Color.Negative, TextXAlignment = Enum.TextXAlignment.Center, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 6, Parent = panel })
+	local errorLabel = Create.Label({ Text = "", TextSize = Theme.TextSize.Small, TextColor3 = Theme.Color.Negative, TextXAlignment = Enum.TextXAlignment.Center, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 7, Parent = panel })
 
 	local function refreshCounter()
 		-- Keep to 20 characters as the player types.
@@ -529,7 +547,25 @@ local function renderNameEntry()
 	box:GetPropertyChangedSignal("Text"):Connect(refreshCounter)
 	refreshCounter()
 
-	local row = Create("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 58), LayoutOrder = 7, Parent = panel })
+	-- 🌟 Rebirth: choose a Legacy perk unlocked by your completed lives.
+	local perkChoice = nil
+	local data = DataController.Get()
+	local unlocked = Legacy.Unlocked(data and data.Lifetime.LivesCompleted or 0)
+	if #unlocked > 0 then
+		local options, labels = { "None" }, { "No perk" }
+		for _, perk in ipairs(unlocked) do
+			table.insert(options, perk.Id)
+			table.insert(labels, perk.Icon .. " " .. perk.Name)
+		end
+		local about = nil
+		Components.Selector({ Label = ("🌟 Legacy level %d"):format(Legacy.Level(data.Lifetime.LivesCompleted)), Options = options, Labels = labels, Value = "None", LayoutOrder = 6, Parent = panel, OnChanged = function(value)
+			perkChoice = if value == "None" then nil else value
+			about.Text = if perkChoice then "Reborn with " .. Legacy.ById[perkChoice].Description else "Start fresh, or be reborn with a perk from your past lives."
+		end })
+		about = Create.Label({ Name = "PerkInfo", Text = "Start fresh, or be reborn with a perk from your past lives.", TextSize = Theme.TextSize.Small, TextColor3 = Theme.Color.Gold, TextXAlignment = Enum.TextXAlignment.Center, AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 6, Parent = panel })
+	end
+
+	local row = Create("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 58), LayoutOrder = 8, Parent = panel })
 	Create.List(Enum.FillDirection.Horizontal, 12, Enum.HorizontalAlignment.Center).Parent = row
 	local half = math.floor((width - 52 - 12) / 2)
 	Components.Button({
@@ -552,7 +588,7 @@ local function renderNameEntry()
 		busy = true
 		Components.SetDisabled(startButton, true)
 		errorLabel.Text = ""
-		local ok, result = Net.Invoke("StartNewLife", pendingSlot, box.Text, pendingOverwrite)
+		local ok, result = Net.Invoke("StartNewLife", pendingSlot, box.Text, pendingOverwrite, perkChoice)
 		busy = false
 		Components.SetDisabled(startButton, false)
 		if ok then
@@ -650,6 +686,22 @@ function MenuController.Start()
 			renderMenu()
 		end
 	end)
+	-- Keep the 🔔 count and 🎁 sparkle up to date without rebuilding the menu.
+	local function refreshBadges()
+		if UIController.Current() ~= "Menu" then
+			return
+		end
+		for _, item in ipairs(MENU_ITEMS) do
+			if item.TextFn and item.Id then
+				local button = menuFrame:FindFirstChild("Menu_" .. item.Id, true)
+				if button then
+					Components.SetText(button, item.Icon .. "  " .. item.TextFn(DataController.Get()))
+				end
+			end
+		end
+	end
+	NotificationController.Changed:Connect(refreshBadges)
+	DataController.Changed:Connect(refreshBadges)
 end
 
 return MenuController

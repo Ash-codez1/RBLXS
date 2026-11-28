@@ -7,7 +7,9 @@
 local Config = {}
 
 Config.GameName = "CHOOSE YOUR LIFE"
-Config.Version = "0.1.0"
+Config.Version = "0.9.0"
+-- Shown in Help → "Something not working?". Edit to point players to you.
+Config.Support = "Found a bug or need help? Message the game's creator on Roblox (their profile is on this game's page) and include the version number below. To report another player, open the Roblox menu (☰ or Esc) and choose Report."
 
 -- ===== Data =====
 Config.DataStoreName = "ChooseYourLife_PlayerData_v1"
@@ -37,6 +39,10 @@ Config.TwistChance = 0.22 -- chance of a twist at each stage's Life Reveal
 
 -- ===== Coins (cosmetic currency) earned by playing =====
 Config.StageCoins = 15 -- for every completed life stage
+-- Daily rewards (DailyService): coins for days 1–7 of a login streak, then the cycle repeats.
+Config.DailyRewards = { 20, 30, 40, 50, 60, 80, 150 }
+Config.DailyChallengeCount = 3
+Config.WeeklyChallengeCount = 3
 Config.GroupEventCoins = 5 -- taking part in a group decision
 Config.CityEventCoins = 5 -- joining a city event
 

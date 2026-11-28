@@ -55,4 +55,8 @@ return function(B, ctx)
 	B.Bench(f, ctx.At(-26, -48, 90, 0.16))
 	B.Bench(f, ctx.At(-26, 26, 90, 0.16))
 	B.PostSign(f, "HospitalSign", ctx.At(-64, -8, 90), 12, "🏥 St. Hope Hospital", "#0077B6")
+
+	-- Memory Stars
+	B.Star(f, "Star_Helipad", ctx.At(44, 46, 0, 0.5))
+	B.Star(hospital, "Star_Ward", hIn(-22, 0, 12))
 end

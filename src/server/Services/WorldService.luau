@@ -22,9 +22,12 @@ local CollectionService = game:GetService("CollectionService")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Players = game:GetService("Players")
+
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Net = require(Shared.Net)
 local Signal = require(Shared.Util.Signal)
+local World = require(Shared.Data.World)
 local WorldSpots = require(Shared.Data.WorldSpots)
 local NPCs = require(Shared.Data.NPCs)
 
@@ -33,6 +36,8 @@ local Validate = require(Server.Lib.Validate)
 local Town = require(Server.World.Town)
 
 local LifeService = require(script.Parent.LifeService)
+local DataService = require(script.Parent.DataService)
+local ProgressService = require(script.Parent.ProgressService)
 
 local WorldService = {}
 WorldService.Priority = 12
@@ -137,9 +142,54 @@ function WorldService.Use(player: Player, spotId: string, npcId: string?)
 	end
 	local ok, result = LifeService.WorldAction(player, spotId, extra)
 	if ok then
+		DataService.Update(player, function(d)
+			local lifetime = d.Lifetime
+			lifetime.WorldActions += 1
+			if def.Kind == "Shift" then
+				lifetime.ShiftsWorked += 1
+			end
+			if spotId == "Plaza_Wish" then
+				lifetime.Wishes += 1
+			elseif spotId == "Harbour_Trip" then
+				lifetime.Trips += 1
+			end
+		end)
+		if spotId == "Plaza_Wish" and World.IsNight(World.ClockTimeAt(workspace:GetServerTimeNow())) then
+			ProgressService.Unlock(player, "S_NightOwl")
+		end
 		WorldService.ActionDone:Fire(player, spotId, result)
 	end
 	return ok, result
+end
+
+-- Talking to someone (checked: you're standing next to them).
+function WorldService.Talk(player: Player, npcId: string)
+	if not NPCs.ById[npcId] then
+		return false, "BadNPC"
+	end
+	local position = rootPosition(player)
+	local npcPosition = WorldService.NPCPosition(npcId)
+	if not position or not npcPosition or (npcPosition - position).Magnitude > WorldService.MaxNPCDistance then
+		return false, "TooFar"
+	end
+	ProgressService.Mark(player, "NPCsTalked", npcId)
+	return true
+end
+
+-- Records which districts each player has walked into (open ones only).
+function WorldService.CheckVisits()
+	for _, player in ipairs(Players:GetPlayers()) do
+		local position = rootPosition(player)
+		local data = DataService.Get(player)
+		if position and data then
+			local districtId = World.DistrictAt(position.X, position.Z)
+			local life = data.Slots[data.ActiveSlot]
+			local stage = World.StageOf(if type(life) == "table" then life else nil)
+			if districtId and not data.Lifetime.DistrictsVisited[districtId] and World.IsUnlocked(districtId, stage) then
+				ProgressService.Mark(player, "DistrictsVisited", districtId)
+			end
+		end
+	end
 end
 
 local function ensureEffect(className: string, name: string, props)
@@ -205,6 +255,19 @@ function WorldService.Start()
 			end
 		end
 		return WorldService.Use(player, id, npc)
+	end)
+	Net.Handle("Talk", function(player, npcId)
+		local id = Validate.Id(npcId, 24)
+		if not id then
+			return false, "BadArgs"
+		end
+		return WorldService.Talk(player, id)
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(3)
+			pcall(WorldService.CheckVisits)
+		end
 	end)
 end
 

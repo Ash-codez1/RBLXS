@@ -125,6 +125,8 @@ local function promptCard(name: string, title: string, body: string, seconds: nu
 	return card
 end
 
+PartyController.PromptCard = promptCard -- also used for trade requests
+
 local function onInvite(invite)
 	promptCard("Invite" .. invite.InviteId, "🤝 " .. invite.FromName .. " invited you", "Join their Life Circle to make group decisions, compare futures and watch Group Life Reveals together. Your own life stays yours.", invite.Seconds or 45, {
 		{ Name = "AcceptInvite", Text = "Join", OnClick = function()

@@ -83,4 +83,8 @@ return function(B, ctx)
 		B.Lamp(f, ctx.Pos(p[1], p[2], 0.1))
 	end
 	B.PostSign(f, "SchoolSign", ctx.At(64, 20, -90), 12, "🏫 Maple School", "#C8553D")
+
+	-- Memory Stars
+	B.Star(f, "Star_Goal", ctx.At(-62, -30))
+	B.Star(school, "Star_Library", inside(21, 0, 4))
 end

@@ -258,7 +258,10 @@ local function onPrompt(prompt: ProximityPrompt)
 	end
 	local spotId = prompt:GetAttribute("CYL_Spot")
 	local npcId = prompt:GetAttribute("CYL_NPC")
-	if type(spotId) == "string" then
+	local starId = prompt:GetAttribute("CYL_Star")
+	if type(starId) == "string" then
+		controller("CollectiblesController").Collect(starId)
+	elseif type(spotId) == "string" then
 		local def = WorldSpots.Get(spotId)
 		if def and def.Kind == "Open" then
 			ExploreController.OpenScreen(def.Open)

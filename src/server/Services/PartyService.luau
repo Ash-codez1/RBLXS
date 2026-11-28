@@ -267,6 +267,11 @@ function PartyService.Respond(player: Player, inviteId: any, accept: any)
 		table.insert(party.Members, player)
 	end
 	partyOf[player] = party
+	for _, member in ipairs({ from, player }) do
+		DataService.Update(member, function(d)
+			d.Lifetime.CirclesJoined += 1
+		end)
+	end
 	for _, member in ipairs(party.Members) do
 		if member ~= player then
 			notify(member, displayName(player) .. " joined your Life Circle!", "Success")
@@ -554,6 +559,7 @@ function resolveEvent(party)
 			Consequences.SyncWealth(life)
 			summary.Applied.Wealth = nil
 			local coins = CoinRewards.Grant(d, Config.GroupEventCoins)
+			d.Lifetime.GroupDecisions += 1
 			result = {
 				Coins = coins,
 				EventId = event.Id,

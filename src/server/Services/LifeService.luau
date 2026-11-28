@@ -37,6 +37,7 @@ local LifeStages = require(Shared.Data.LifeStages)
 local DataTemplate = require(Shared.Data.DataTemplate)
 local TableUtil = require(Shared.Util.TableUtil)
 local Config = require(Shared.Config)
+local Legacy = require(Shared.Data.Legacy)
 
 local Server = script.Parent.Parent
 local Validate = require(Server.Lib.Validate)
@@ -144,7 +145,21 @@ function LifeService.ToClient(scenario, life)
 end
 
 -- ===== Remote handlers =====
-local function startNewLife(player: Player, slotArg: any, nameArg: any, overwriteArg: any)
+-- Rebirth: applies a Legacy perk (Shared/Data/Legacy) to a brand-new life.
+function LifeService.ApplyLegacy(life, perk)
+	for stat, bonus in pairs(perk.Stats or {}) do
+		if life.Stats[stat] ~= nil and stat ~= "Wealth" then
+			life.Stats[stat] = math.clamp(life.Stats[stat] + bonus, 0, 100)
+		end
+	end
+	if perk.Money then
+		life.Money += perk.Money
+	end
+	life.Legacy = perk.Id
+	Consequences.SyncWealth(life)
+end
+
+local function startNewLife(player: Player, slotArg: any, nameArg: any, overwriteArg: any, perkArg: any)
 	local slotId = Validate.OneOf(slotArg, DataTemplate.SlotIds)
 	if not slotId then
 		return false, "BadSlot"
@@ -155,6 +170,13 @@ local function startNewLife(player: Player, slotArg: any, nameArg: any, overwrit
 	end
 	if type(data.Slots[slotId]) == "table" and overwriteArg ~= true then
 		return false, "SlotInUse"
+	end
+	local perk = nil
+	if perkArg ~= nil and perkArg ~= false then
+		if not Legacy.IsUnlocked(perkArg, data.Lifetime.LivesCompleted) then
+			return false, "PerkLocked"
+		end
+		perk = Legacy.ById[perkArg]
 	end
 	local name = cleanName(nameArg)
 	if not name then
@@ -167,10 +189,17 @@ local function startNewLife(player: Player, slotArg: any, nameArg: any, overwrit
 
 	local seed = Random.new():NextInteger(1, 2147483646)
 	local life = DataTemplate.NewLife(name, seed)
+	if perk then
+		LifeService.ApplyLegacy(life, perk)
+	end
 	local ok = DataService.Update(player, function(d)
 		d.Slots[slotId] = life
 		d.ActiveSlot = slotId
 		d.Lifetime.LivesStarted += 1
+		if perk then
+			d.Lifetime.Rebirths += 1
+			life.Rebirth = d.Lifetime.Rebirths
+		end
 	end)
 	if not ok then
 		return false, "NotLoaded"
@@ -347,6 +376,9 @@ function LifeService.MakeChoice(player: Player, scenarioArg: any, choiceArg: any
 				revealPayload = Reveal.Stage(l, stageCompleted, rngFor(l, 6))
 				revealPayload.Coins = CoinRewards.Grant(d, Config.StageCoins)
 				revealPayload.Boosted = CoinRewards.Multiplier(d) > 1
+				if revealPayload.Twist then
+					d.Lifetime.TwistsSeen += 1
+				end
 			else
 				l.Completed = true
 				lifeCompleted = true
@@ -358,13 +390,16 @@ function LifeService.MakeChoice(player: Player, scenarioArg: any, choiceArg: any
 				TableUtil.TrimArray(d.LifeHistory, Config.MaxLifeHistory)
 				finalEntry.Boosted = CoinRewards.Multiplier(d) > 1
 				finalEntry.Coins = CoinRewards.Grant(d, finalEntry.Coins)
+				d.Lifetime.EndingsSeen[finalEntry.Ending.Id] = true
 			end
+			d.Lifetime.StagesCompleted += 1
 		end
 
 		Consequences.SyncWealth(l)
 		local wealthChange = l.Stats.Wealth - wealthStart
 		summary.Applied.Wealth = if math.abs(wealthChange) >= 0.05 then wealthChange else nil
 		d.Lifetime.HighestNetWorth = math.max(d.Lifetime.HighestNetWorth, Consequences.NetWorth(l))
+		LifeService.RecordMilestones(d, l)
 
 		outcome = {
 			ScenarioId = scenarioId,
@@ -433,6 +468,19 @@ local function runAction(player: Player, fn, ...)
 	return ok, if type(result) == "table" then TableUtil.DeepCopy(result) else result
 end
 
+-- Lifetime records for achievements and profiles: careers, homes and cars
+-- ever held (any life), and the highest career level reached.
+function LifeService.RecordMilestones(d, l)
+	local lifetime = d.Lifetime
+	if l.Career and l.Career.Id ~= "None" then
+		lifetime.CareersHeld[l.Career.Id] = true
+	end
+	lifetime.TopCareerLevel = math.max(lifetime.TopCareerLevel or 0, l.PeakCareerLevel or 0, l.Career and l.Career.Level or 0)
+	for assetId in pairs(l.Assets or {}) do
+		lifetime.AssetsOwned[assetId] = true
+	end
+end
+
 -- Lifeville world actions. WorldService validates where the player is first
 -- (distance to the spot or NPC, their own home) and passes `extra`.
 function LifeService.WorldAction(player: Player, spotId: string, extra)
@@ -467,9 +515,15 @@ function LifeService.SetFocus(player: Player, focus: any)
 end
 
 function LifeService.Invest(player: Player, amount: any)
-	return runAction(player, function(life, a)
+	local ok, result = runAction(player, function(life, a)
 		return Actions.Invest(life, a)
 	end, amount)
+	if ok then
+		DataService.Update(player, function(d)
+			d.Lifetime.InvestActions += 1
+		end)
+	end
+	return ok, result
 end
 
 function LifeService.Withdraw(player: Player, amount: any)
@@ -479,9 +533,15 @@ function LifeService.Withdraw(player: Player, amount: any)
 end
 
 function LifeService.RepayLoan(player: Player, index: any, amount: any)
-	return runAction(player, function(life, i, a)
+	local ok, result = runAction(player, function(life, i, a)
 		return Actions.RepayLoan(life, i, a)
 	end, index, amount)
+	if ok and type(result) == "table" and result.PaidOff then
+		DataService.Update(player, function(d)
+			d.Lifetime.LoansRepaid += 1
+		end)
+	end
+	return ok, result
 end
 
 function LifeService.Init()

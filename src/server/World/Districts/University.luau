@@ -62,4 +62,8 @@ return function(B, ctx)
 		B.Lamp(f, ctx.Pos(p[1], p[2], 0.16))
 	end
 	B.PostSign(f, "UniSign", ctx.At(0, 64, 180), 14, "🎓 Lifeville University", "#5E548E")
+
+	-- Memory Stars
+	B.Star(f, "Star_Statue", ctx.At(-29, 30))
+	B.Star(union, "Star_Union", uInside(-9, 0, -6))
 end

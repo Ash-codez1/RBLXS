@@ -28,6 +28,10 @@ return {
 		-- ===== City events (CityEventService), S->C =====
 		CityEvent = {}, -- a server-wide invitation
 		CityEventSummary = {}, -- how many people joined
+		-- ===== Phase 9 (ProgressService, TradeService), S->C =====
+		AchievementsUnlocked = {}, -- { achievementId, ... } just unlocked
+		TradeRequest = {}, -- { RequestId, FromUserId, FromName, Seconds } someone wants to trade
+		TradeUpdate = {}, -- trade window state, or { Closed = true, Reason } when it ends
 	},
 
 	Functions = {
@@ -87,5 +91,18 @@ return {
 		GetStoreInfo = { RateLimit = { Rate = 0.5, Burst = 2 } }, -- () -> Robux products & passes
 		-- Phase 8 (Lifeville): use a world spot (or one offered by an NPC you're talking to)
 		WorldAction = { RateLimit = { Rate = 2, Burst = 4 } }, -- (spotId, npcId?) -> outcome
+		Talk = { RateLimit = { Rate = 2, Burst = 5 } }, -- (npcId) you talked to someone nearby
+
+		-- ===== Phase 9: extras =====
+		ClaimDaily = { RateLimit = { Rate = 0.5, Burst = 2 } }, -- () -> today's reward
+		CollectStar = { RateLimit = { Rate = 2, Burst = 4 } }, -- (starId) a Memory Star you're next to
+		GetLeaderboard = { RateLimit = { Rate = 0.5, Burst = 4 } }, -- (boardId, "Global" | "Friends")
+		GetProfile = { RateLimit = { Rate = 1, Burst = 4 } }, -- (userId) a player in this server
+		TutorialStep = { RateLimit = { Rate = 2, Burst = 6 } }, -- (step) or ("Done") / ("Reset")
+		TradeRequestSend = { RateLimit = { Rate = 0.5, Burst = 2 } }, -- (targetUserId)
+		TradeRespond = { RateLimit = { Rate = 1, Burst = 3 } }, -- (requestId, accept)
+		TradeSetOffer = { RateLimit = { Rate = 3, Burst = 8 } }, -- (sessionId, { itemId, ... })
+		TradeReady = { RateLimit = { Rate = 2, Burst = 5 } }, -- (sessionId, version, ready)
+		TradeCancel = { RateLimit = { Rate = 1, Burst = 3 } }, -- (sessionId)
 	},
 }

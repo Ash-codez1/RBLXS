@@ -475,6 +475,7 @@ require("./life_spec")(H)
 require("./multiplayer_spec")(H)
 require("./shop_spec")(H)
 require("./world_spec")(H)
+require("./extras_spec")(H)
 require("./client_spec")(H)
 
 -- ======================================================================

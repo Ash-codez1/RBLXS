@@ -107,4 +107,9 @@ return function(B, ctx)
 	beam.Parent = lantern
 	B.Cylinder(f, "LighthouseCap", ctx.At(56, 58, 0, 27.4), 5, 1.2, "#1D3557", Enum.Material.Metal)
 	B.PostSign(f, "HarbourSign", ctx.At(-66, -20, 90, 0.16), 12, "⚓ Harbour & Hilltop", "#023E8A")
+
+	-- Memory Stars
+	B.Star(f, "Star_Lighthouse", ctx.At(46, 58, 0, -0.4))
+	B.Star(f, "Star_Pier", ctx.At(51, 41.5, 0, 1.6))
+	B.Star(f, "Star_Pool", ctx.At(60, -51, 0, hilltop))
 end

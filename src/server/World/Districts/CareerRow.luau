@@ -118,4 +118,8 @@ return function(B, ctx)
 		B.Tree(f, ctx.Pos(p[1], p[2], 0.1), 0.9)
 	end
 	B.PostSign(f, "CareerRowSign", ctx.At(-66, 0, 90), 12, "💼 Career Row", "#F77F00")
+
+	-- Memory Stars
+	B.Star(f, "Star_ClockTower", ctx.At(44, 54))
+	B.Star(studio, "Star_Booth", sIn(-13, 0, 10))
 end

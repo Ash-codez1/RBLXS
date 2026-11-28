@@ -22,6 +22,19 @@ function CoinRewards.Grant(data, amount: number): number
 	local granted = math.floor(amount * CoinRewards.Multiplier(data))
 	data.Coins += granted
 	data.Lifetime.CoinsEarned += granted
+	data.Lifetime.PlayCoins = (data.Lifetime.PlayCoins or 0) + granted -- for "earn coins by playing" challenges
+	return granted
+end
+
+-- Rewards that aren't from playing (achievements, challenges, daily rewards):
+-- counted as earned, never doubled, and not towards "earn coins" challenges.
+function CoinRewards.GrantBonus(data, amount: number): number
+	if type(amount) ~= "number" or amount <= 0 then
+		return 0
+	end
+	local granted = math.floor(amount)
+	data.Coins += granted
+	data.Lifetime.CoinsEarned += granted
 	return granted
 end
 

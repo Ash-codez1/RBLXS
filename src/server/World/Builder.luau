@@ -551,6 +551,35 @@ function B.Spot(parent: Instance, spotId: string, cf: CFrame, holdDuration: numb
 	return part
 end
 
+-- A Memory Star collectible (Data/Collectibles), floating above cf.
+function B.Star(parent: Instance, starId: string, cf: CFrame)
+	local star = B.Part(parent, { Name = starId, Shape = Enum.PartType.Ball, Size = Vector3.new(1.6, 1.6, 1.6), CFrame = cf * CFrame.new(0, 1.4, 0), Color = "#FFD60A", Material = Enum.Material.Neon, CanCollide = false, Tag = "CYL_Star" })
+	star.CanQuery = false
+	star:SetAttribute("CYL_Star", starId)
+	local sparkle = Instance.new("ParticleEmitter")
+	sparkle.Name = "Sparkle"
+	sparkle.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	sparkle.Color = ColorSequence.new(color("#FFF3B0"))
+	sparkle.Size = NumberSequence.new(0.35)
+	sparkle.Lifetime = NumberRange.new(0.6, 1.2)
+	sparkle.Rate = 8
+	sparkle.Speed = NumberRange.new(0.5, 1.5)
+	sparkle.SpreadAngle = Vector2.new(180, 180)
+	sparkle.Parent = star
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "Prompt"
+	prompt.ActionText = "Collect"
+	prompt.ObjectText = "✨ Memory Star"
+	prompt.HoldDuration = 0
+	prompt.MaxActivationDistance = 8
+	prompt.RequiresLineOfSight = false
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.GamepadKeyCode = Enum.KeyCode.ButtonX
+	prompt:SetAttribute("CYL_Star", starId)
+	prompt.Parent = star
+	return star
+end
+
 -- Where an NPC stands (NPCService spawns the character here, facing cf.LookVector).
 function B.NPC(anchors: Instance, npcId: string, cf: CFrame)
 	local part = B.Part(anchors, { Name = npcId, Size = Vector3.new(1, 1, 1), CFrame = cf * CFrame.new(0, 0.5, 0), Transparency = 1, CanCollide = false })

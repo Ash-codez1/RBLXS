@@ -512,4 +512,35 @@ function Components.StatBar(p)
 	return { Instance = frame, Set = set }
 end
 
+-- ===== Progress bar =====
+-- Components.ProgressBar({ Fraction 0..1, Color?, Text?, Size?, LayoutOrder?, Parent?, Name? })
+function Components.ProgressBar(p)
+	local track = Create("Frame", {
+		Name = p.Name or "Progress",
+		BackgroundColor3 = Theme.Color.Background,
+		Size = p.Size or UDim2.new(1, 0, 0, 22),
+		LayoutOrder = p.LayoutOrder or 0,
+		Parent = p.Parent,
+	}, { Create.Corner(Theme.RadiusPill) })
+	Create("Frame", {
+		Name = "Fill",
+		BackgroundColor3 = p.Color or Theme.Color.Positive,
+		Size = UDim2.fromScale(math.clamp(p.Fraction or 0, 0, 1), 1),
+		Parent = track,
+	}, { Create.Corner(Theme.RadiusPill) })
+	if p.Text then
+		Create.Label({
+			Name = "Label",
+			Text = p.Text,
+			TextSize = Theme.TextSize.Tiny,
+			FontFace = Theme.Font.Bold,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = 2,
+			Parent = track,
+		})
+	end
+	return track
+end
+
 return Components

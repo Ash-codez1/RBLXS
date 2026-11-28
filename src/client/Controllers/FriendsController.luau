@@ -184,6 +184,12 @@ function render()
 				{ Name = "CompareP" .. p.UserId, Text = "Compare", Icon = "⚖️", Width = 150, OnClick = function()
 					FutureController.OpenCompareWith(p.UserId)
 				end },
+				{ Name = "Profile" .. p.UserId, Text = "Profile", Icon = "👤", Width = 140, OnClick = function()
+					require(script.Parent.ProfileController).Open(p.UserId)
+				end },
+				{ Name = "Trade" .. p.UserId, Text = "Trade", Icon = "🔄", Width = 130, OnClick = function()
+					require(script.Parent.TradeController).Request(p.UserId)
+				end },
 			})
 		end
 	end

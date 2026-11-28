@@ -106,4 +106,9 @@ return function(B, ctx)
 	B.Flowerbed(f, ctx.At(-12, -12), 8, 8)
 	B.Flowerbed(f, ctx.At(12, 12), 8, 8)
 	B.PostSign(f, "ParkSign", ctx.At(66, 0, -90), 12, "🌳 Willow Park", "#386641")
+
+	-- Memory Stars
+	B.Star(f, "Star_Pond", ctx.At(-47, 28))
+	B.Star(f, "Star_Stands", ctx.At(-20, -52.6, 0, 3.7))
+	B.Star(f, "Star_Picnic", ctx.At(22, 50))
 end

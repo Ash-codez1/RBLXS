@@ -37,6 +37,7 @@ DataService.Priority = 0 -- initialised first; everything else depends on it
 
 DataService.ProfileLoaded = Signal.new() -- (player, data)
 DataService.ProfileReleasing = Signal.new() -- (player, data) fired before the final save
+DataService.Changed = Signal.new() -- (player) after updates (batched with replication)
 DataService.UsingMockStore = false
 
 local JOB_ID = if game.JobId ~= "" then game.JobId else "Studio_" .. HttpService:GenerateGUID(false)
@@ -228,6 +229,7 @@ local function replicate(player: Player)
 	task.delay(Config.ReplicationThrottle, function()
 		entry.ReplicationQueued = false
 		if entries[player] == entry and player.Parent then
+			DataService.Changed:Fire(player)
 			local key = historyKey(entry.Data)
 			local omit = entry.SentHistoryKey == key
 			entry.SentHistoryKey = key

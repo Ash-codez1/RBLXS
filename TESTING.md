@@ -15,7 +15,7 @@ You need a **Windows or Mac computer** with **Roblox Studio** (free). Studio doe
 
 **What you should see:**
 - **Output window** (View → Output):
-  - `[Server] CHOOSE YOUR LIFE started with 13 services` and no red errors.
+  - `[Server] CHOOSE YOUR LIFE started with 20 services` and no red errors.
   - A yellow line saying DataStores are unavailable and the in-memory store is being used. That's expected: an unpublished place can't save, so progress resets each time you press Stop.
   - If filtering isn't available in Studio, a yellow line about text filtering. That's also expected and only happens in Studio.
 - **On screen:** a loading screen, then the main menu. **Play** → choose a name → decision cards.
@@ -27,6 +27,7 @@ You need a **Windows or Mac computer** with **Roblox Studio** (free). Studio doe
 - Settings, save slots, and Life History (after you finish a life).
 - **🛍️ Shop** and **🎒 My Items** (main menu): you start with 100 Coins, enough for a baseball cap. Watch your look change on the menu card, in the HUD and on your character's name tag.
 - **🌆 Explore Lifeville** (the first HUD button, or the main menu): see the next section.
+- **Achievements, daily rewards, challenges, leaderboards, trading:** see "Test the extras" below.
 
 > Tip: to rush through a life, tap each card twice (select + confirm) and press **Continue**. Settings → **Reduce animations** shortens the cinematics.
 
@@ -34,7 +35,7 @@ You need a **Windows or Mac computer** with **Roblox Studio** (free). Studio doe
 
 1. **File → Publish to Roblox** (create a new experience; it can stay private).
 2. **Home → Game Settings → Security →** turn on **Enable Studio Access to API Services** → Save.
-3. Press Play again. The "in-memory" warning disappears and your lives, coins and settings persist.
+3. Press Play again. The "in-memory" warning disappears and your lives, coins and settings persist. The global leaderboards also start using real OrderedDataStores.
 
 ### Explore Lifeville (the 3D town)
 
@@ -51,6 +52,29 @@ You need a **Windows or Mac computer** with **Roblox Studio** (free). Studio doe
 5. **Two players** (Test → Clients and Servers): you should see each other walking around, and each of you gets your own house.
 
 > If a townsperson can't be built in Studio, Output shows a yellow `[NPCService] Using a simple character for …` line and a block figure stands there instead. Please report it if you see it.
+
+### Test the extras (achievements, rewards, leaderboards, trading)
+
+1. **Tutorial:** on your first visit a gold-edged tip card appears near the bottom of the screen. Follow it through your first decisions. **Got it** moves on and **Skip tutorial** turns it off. **❓ Help → Replay the tutorial** starts it again.
+2. **🎁 Daily Reward** (main menu): claim Day 1 (+20 Coins). The window then shows how long until the next one. Claiming again the same day is refused by the server.
+3. **🏆 Achievements** (main menu):
+   - Make your first decision and **First Steps** unlocks, with a notification and +Coins. Finish Childhood for **Growing Up**. Bars show how close you are to the rest.
+   - Secret ones show **???** with a hint.
+   - **Challenges** tab: today's 3 and this week's 3, with progress bars. Make decisions or do things in Lifeville and watch them fill. The Coins arrive on their own.
+   - **Memory Stars** tab: hints for the 20 stars.
+4. **✨ Memory Stars:** in Lifeville, walk up to a glowing star (in the Plaza there's one behind the Hall of Lives and one at the foot of the welcome arch). Press **E** to collect it: a card shows "1 of 20 found · +15 🪙" and the star disappears for you.
+5. **🌟 Rebirth:** after finishing a life, start a new one. On the name screen, the **Legacy** selector offers the perks you've unlocked (two after your first life, more later). Pick **Head Start** and your new life begins with +5 Intelligence.
+6. **📈 Leaderboards** (main menu): switch boards and **Global** / **Friends**. In Studio, the Global boards use a temporary in-memory board unless saving is on (see "Make progress save between tests"), and the screen says so. The **Hall of Fame** board in Lifeville Plaza shows the top players by lives lived. Lives and trophies also appear in the Roblox player list (Tab key).
+7. **👤 Profile** (main menu): your look, Legacy level and lifetime stats.
+8. **🔄 Trading** needs two players (**Test → Clients and Servers → 2 Players**):
+   - Give both players a tradable item: earn Coins and buy something in the shop. Starting Coins cover a cap.
+   - In Player1's window: **Play With Friends → 🔄 Trade** next to Player2. Player2 gets a request card: press **Trade**.
+   - Both windows show the trade window. Tap items to offer them, then press **Ready** in both. After a 3-second countdown the items swap, and both players get "Trade complete!".
+   - Try changing an offer after the other player pressed Ready: both go back to "Not ready".
+9. **🔔 Notifications** (main menu): every notice from this visit, with an unread count on the button.
+10. **❓ Help:** answers about stats, actions, the Life Reveal, Coins, rebirth, friends and safety, and the game version under "Something not working?".
+
+> **Roblox badges** only work in a published place with real badge ids (README §3). Until you add ids, achievements still unlock and pay Coins; they just don't award a Roblox badge.
 
 ### Test the shop and Robux purchases
 

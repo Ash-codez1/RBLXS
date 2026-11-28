@@ -10,6 +10,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Net = require(Shared.Net)
 local NPCs = require(Shared.Data.NPCs)
 local WorldSpots = require(Shared.Data.WorldSpots)
 local World = require(Shared.Data.World)
@@ -54,6 +55,7 @@ function DialogueController.Open(npcId: string)
 	if not npc then
 		return
 	end
+	task.spawn(Net.Invoke, "Talk", npcId) -- counts for achievements and challenges
 	local handle = UIController.OpenPanel({ Name = "DialogueModal", Title = (npc.Icon or "💬") .. "  " .. npc.Name, Width = 600, Height = 560 })
 	handle.Subtitle.Text = npc.Role or ""
 	local life = activeLife()

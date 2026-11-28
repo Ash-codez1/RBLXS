@@ -168,6 +168,11 @@ for _, entry in ipairs(Catalog.Items) do
 	Catalog.ById[entry.Id] = entry
 end
 
+-- Items players may trade with each other: bought with Coins, not VIP-only.
+function Catalog.IsTradable(entry): boolean
+	return entry ~= nil and not entry.VipOnly and not entry.NoTrade and (entry.Price or 0) > 0
+end
+
 function Catalog.Get(id: any)
 	return if type(id) == "string" then Catalog.ById[id] else nil
 end

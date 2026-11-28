@@ -64,4 +64,8 @@ return function(B, ctx)
 		B.Tree(f, ctx.Pos(p[1], p[2], 0.1), 1)
 	end
 	B.NPC(ctx.NPCs, "Neighbour", ctx.At(-6, 10, 0, 0.24))
+
+	-- Memory Stars
+	B.Star(flats, "Star_Stairs", aIn(-3, 9, 12.5))
+	B.Star(f, "Star_Hedge", ctx.At(-60, -50))
 end

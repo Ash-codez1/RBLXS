@@ -671,8 +671,9 @@ function Harness.new(options)
 	terrain.Parent = Workspace
 	Workspace.Terrain = terrain
 	local serverTimeOffset = 0
+	local clockBase = os.time() - os.clock() -- real Unix time, like Roblox's server clock
 	rawset(Workspace, "GetServerTimeNow", function()
-		return os.clock() + serverTimeOffset + 1.7e9
+		return clockBase + os.clock() + serverTimeOffset
 	end)
 	function self.setServerTimeOffset(seconds: number)
 		serverTimeOffset = seconds
@@ -714,6 +715,19 @@ function Harness.new(options)
 	PlayersService.PlayerAdded = fakeEvent()
 	PlayersService.PlayerRemoving = fakeEvent()
 	PlayersService.CharacterAutoLoads = true
+	-- Friends lists for leaderboards: options.Friends[userId] = { { Id, Username, DisplayName }, ... }
+	PlayersService.GetFriendsAsync = function(_, userId)
+		local list = (options.Friends or {})[userId]
+		if list == nil then
+			error("Friends unavailable for " .. tostring(userId))
+		end
+		local pages = { IsFinished = true }
+		function pages:GetCurrentPage()
+			return list
+		end
+		function pages:AdvanceToNextPageAsync() end
+		return pages
+	end
 	-- Builds a simple R15-shaped rig (enough parts for the world code).
 	local function makeRig(name)
 		local model = newInstance("Model", name or "Rig")
@@ -910,6 +924,34 @@ function Harness.new(options)
 			end,
 			PromptGamePassPurchase = function(service, player, id)
 				table.insert(service.Prompts, { Kind = "Pass", Player = player, Id = id })
+			end,
+		},
+		BadgeService = {
+			Awarded = {},
+			Fails = false,
+			AwardBadge = function(service, userId, badgeId)
+				if service.Fails then
+					error("Badge service unavailable")
+				end
+				table.insert(service.Awarded, { UserId = userId, BadgeId = badgeId })
+				return true
+			end,
+			UserHasBadgeAsync = function(service, userId, badgeId)
+				for _, a in ipairs(service.Awarded) do
+					if a.UserId == userId and a.BadgeId == badgeId then
+						return true
+					end
+				end
+				return false
+			end,
+		},
+		UserService = {
+			GetUserInfosByUserIdsAsync = function(_, ids)
+				local out = {}
+				for _, id in ipairs(ids) do
+					table.insert(out, { Id = id, Username = "user" .. id, DisplayName = "User " .. id })
+				end
+				return out
 			end,
 		},
 		SocialService = {

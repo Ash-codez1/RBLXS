@@ -150,6 +150,7 @@ function CityEventService.Respond(player: Player, eventId: any, join: any)
 		local lifeRng = Random.new((life.Seed + #life.Decisions * 17 + event.Id * 13) % 2147483646 + 1)
 		local summary = Consequences.Apply(life, event.Def.Effects, lifeRng, true, event.OutcomeIndex)
 		summary.Applied.Wealth = nil
+		d.Lifetime.CityEvents += 1
 		result = {
 			Coins = CoinRewards.Grant(d, Config.CityEventCoins),
 			Joined = true,

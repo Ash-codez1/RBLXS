@@ -126,4 +126,8 @@ return function(B, ctx)
 	B.Block(f, "ShelterRoof", ctx.At(-12, 62.2, 0, 7), 8.4, 0.4, 3.6, "#ADB5BD", Enum.Material.Metal)
 	B.Bench(f, ctx.At(-12, 62.4, 180, 0.1))
 	B.PostSign(f, "DowntownSign", ctx.At(0, 66, 180), 12, "🏙️ Downtown", "#2B2D42")
+
+	-- Memory Stars
+	B.Star(f, "Star_BusStop", ctx.At(-17, 62.4))
+	B.Star(cinema, "Star_Arcade", aIn(11, 0, -11))
 end

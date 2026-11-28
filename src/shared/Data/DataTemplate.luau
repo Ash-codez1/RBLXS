@@ -21,6 +21,9 @@
 	├─ Settings           client preferences (validated on the server)
 	├─ Privacy            what friends may see in comparisons
 	├─ Tutorial           onboarding progress
+	├─ BadgesAwarded      Roblox badges already awarded
+	├─ TradeLog           recent cosmetic trades (for support)
+	├─ ProcessedTrades    recent trade ids (duplicate guard)
 	└─ ProcessedReceipts  recent developer-product receipt ids (duplicate guard)
 ]]
 
@@ -64,8 +67,9 @@ local profileTemplate = {
 	Inventory = { Owned = {}, Equipped = {} }, -- cosmetics: Owned[itemId] = true, Equipped[slot] = itemId
 	Passes = {}, -- game pass ownership { VIP = true, CoinBooster = true }, from Roblox on every join
 	PassesUnverified = {}, -- passes bought in this session that Roblox hasn't confirmed yet (re-checked on join)
-	Achievements = {},
-	Collectibles = {},
+	Achievements = {}, -- { [achievementId] = unlock time } (Data/Achievements)
+	BadgesAwarded = {}, -- { [badgeId] = true } Roblox badges already given (Data/Badges)
+	Collectibles = {}, -- { [starId] = true } Memory Stars found in Lifeville
 	Daily = { LastClaimDay = 0, Streak = 0, BestStreak = 0 },
 	Challenges = { DailyDay = 0, Daily = {}, WeeklyWeek = 0, Weekly = {} },
 	Lifetime = {
@@ -78,7 +82,32 @@ local profileTemplate = {
 		HighestNetWorth = 0,
 		RareEventsSeen = 0,
 		FirstJoin = 0,
+		-- Phase 9 (achievements, challenges, profiles, leaderboards)
+		PlayCoins = 0, -- coins earned by playing (stages, lives, events), for challenges
+		StagesCompleted = 0,
+		TwistsSeen = 0,
+		TopCareerLevel = 0,
+		InvestActions = 0,
+		LoansRepaid = 0,
+		WorldActions = 0,
+		ShiftsWorked = 0,
+		Wishes = 0,
+		Trips = 0,
+		CirclesJoined = 0,
+		GroupDecisions = 0,
+		CityEvents = 0,
+		TradesCompleted = 0,
+		ChallengesCompleted = 0,
+		DailyClaims = 0,
+		Rebirths = 0,
+		CareersHeld = {}, -- { [careerId] = true }
+		AssetsOwned = {}, -- { [assetId] = true } homes and cars owned in any life
+		EndingsSeen = {}, -- { [endingId] = true }
+		NPCsTalked = {}, -- { [npcId] = true }
+		DistrictsVisited = {}, -- { [districtId] = true }
 	},
+	TradeLog = {}, -- recent trades { Id, With, Gave, Got, Time } (capped)
+	ProcessedTrades = {}, -- recent trade ids (duplicate guard)
 	Settings = DataTemplate.DefaultSettings,
 	Privacy = DataTemplate.DefaultPrivacy,
 	Tutorial = { Completed = false, Step = 0 },

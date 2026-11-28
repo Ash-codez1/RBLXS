@@ -18,18 +18,54 @@ Built in Luau as a [Rojo](https://rojo.space) project, so every script is a plai
 | 6 | **Multiplayer**: Life Circles, invites, group decisions with voting, group Life Reveals, city events, joining friends | ✅ Done |
 | 7 | **Shop & monetisation**: Coins, 81 cosmetics, previews, My Items, look shown in-game, Robux coin packs & passes | ✅ Done |
 | 8 | **Lifeville, the 3D town**: 9 districts that open as you grow, 55 things to do, 34 townspeople, your own home, day & night, Life Reveal flyovers | ✅ Done |
-| 9 | Achievements, daily rewards, challenges, leaderboards | ⏳ Next |
-| 10–11 | Security hardening, testing, polish | ⬜ (core saving/security done in Phase 1) |
+| 9 | **Extras**: 50 achievements (7 secret) + Roblox badges, daily rewards & streaks, daily/weekly challenges, Memory Stars, rebirth, leaderboards, profiles, safe trading, tutorial, help, notifications inbox | ✅ Done |
+| 10–11 | Security hardening, testing, polish | ⏳ Next (core saving/security done in Phase 1) |
 
-**182 automated tests pass** (`lune run tests/run.luau`). They include:
+**213 automated tests pass** (`lune run tests/run.luau`). They include:
 - a simulation of 400 random lives from age 5 to 85;
 - a full life played through the real UI;
 - UI click-throughs on desktop, phone portrait, phone landscape and gamepad;
 - two players in one server (Life Circles, group votes, city events);
 - the shop and Robux purchases (receipts, passes, failed saves, spoofing attempts);
-- the generated town (layout, budgets, every spot and person in place) and walking it as a player: prompts, the server's checks, the map, day and night, doors, traffic, homes and the Life Reveal flyover.
+- the generated town (layout, budgets, every spot and person in place) and walking it as a player: prompts, the server's checks, the map, day and night, doors, traffic, homes and the Life Reveal flyover;
+- achievements, badges, daily streaks, challenges, Memory Stars, rebirth, leaderboards, profiles and a two-player trade through the real UI.
 
 Nothing has been play-tested inside Roblox Studio yet; see §4.
+
+### Achievements, rewards, leaderboards and trading (Phase 9)
+
+- **🏆 Achievements** (main menu): 50 achievements in 9 categories.
+  - They cover lives, careers, family, wealth, the Life Reveal, Lifeville, friends and collecting. Each shows a progress bar and pays Coins once.
+  - **7 are secret:** they show "???" and a hint until you unlock them (for example, a wish at the fountain at night).
+  - Progress comes from what you actually do, recorded on the server. **Roblox badges** are optional: paste badge ids into `Shared › Data › Badges` (see §3).
+- **🎁 Daily rewards and login streaks:**
+  - Claim once per day (UTC, from the server clock) for 20 → 150 Coins over a 7-day cycle.
+  - Miss a day and the streak starts again. Your best streak is kept.
+- **🎯 Daily and weekly challenges:**
+  - 3 new ones each day and 3 each week, the same for everyone. For example: "Make 5 decisions" or "Do 20 things around Lifeville".
+  - If you can't do one any more (say, "visit a district you've never been to" when you've been everywhere), you get the next one instead.
+  - Only progress made after a challenge starts counts. The Coins arrive automatically when you finish.
+- **⭐ Memory Stars:** 20 collectibles hidden around Lifeville, one of them secret. The server checks you're next to a star before it counts. Hints are in Achievements → Memory Stars.
+- **🌟 Rebirth (Legacy perks):**
+  - Every completed life raises your Legacy level and unlocks perks, such as +5 Intelligence, +5 Health or $500 in savings.
+  - When starting a new life you can be reborn with one. Perks are earned by playing only, and the server checks you've unlocked the one you pick.
+- **📈 Leaderboards:**
+  - Five boards: lives lived, richest life, achievements, best login streak and Memory Stars.
+  - Each shows **Global** (OrderedDataStores) or **Friends** (your Roblox friends) rankings.
+  - A **Hall of Fame** board stands in Lifeville Plaza, and lives and trophies appear in the Roblox player list.
+  - Players whose privacy is set to Nobody are left off all of them.
+- **👤 Profiles and statistics:**
+  - Your profile, or anyone's in the server: look, title, Legacy level, achievements, stars, and lifetime stats (decisions, richest life, endings collected, careers, shifts, trades...).
+  - Other players see only what your privacy settings allow.
+- **🔄 Trading** cosmetic items between players in the same server, from Play With Friends or a profile:
+  - Only items bought with Coins can be traded. VIP items, Coins and anything bought with Robux can't.
+  - Pressing Ready locks in exactly the offer you see. Any change un-readies both players, and a 3-second countdown gives time to cancel.
+  - The server re-checks everything, swaps both inventories at once, gives the trade an id so it can never apply twice, and saves both players straight away. Both players' trade logs keep a record.
+- **🎓 Tutorial:** six short tips that appear at the right moments (first visit, first decision, first outcome, actions, exploring, first Life Reveal). You can skip it, and replay it from Help.
+- **❓ Help and support:**
+  - Answers to the common questions, built from the real game data (stats, unlock ages, action counts).
+  - How to report a player or a bug, and the game version.
+- **🔔 Notifications inbox:** everything announced this visit (achievements, challenges, rewards, invites, trades), with an unread count on the menu.
 
 ### Lifeville: the 3D town (Phase 8)
 
@@ -219,11 +255,17 @@ ReplicatedStorage
 └─ Shared                              Folder
    ├─ Config                           ModuleScript   constants, credits, loading tips
    ├─ Data                             Folder
+   │  ├─ Achievements                  ModuleScript   50 achievements (progress rules, rewards, secrets)
    │  ├─ Assets                        ModuleScript   homes/cars you can buy in a life
-   │  ├─ Catalog                       ModuleScript   81 shop cosmetics, slots, rarities, search
+   │  ├─ Badges                        ModuleScript   optional Roblox badge ids (paste yours, see §3)
+   │  ├─ Catalog                       ModuleScript   81 shop cosmetics, slots, rarities, search, tradability
+   │  ├─ Challenges                    ModuleScript   daily and weekly challenge pools
+   │  ├─ Collectibles                  ModuleScript   the 20 Memory Stars
    │  ├─ Lifestyle                     ModuleScript   lifestyle focus options
    │  ├─ Careers                       ModuleScript   21 careers, salaries, level titles, education
    │  ├─ DataTemplate                  ModuleScript   save schema, new life, migrations
+   │  ├─ Leaderboards                  ModuleScript   the 5 leaderboards
+   │  ├─ Legacy                        ModuleScript   rebirth perks
    │  ├─ LifeStages                    ModuleScript   6 stages, ages, decisions per stage
    │  ├─ Monetisation                  ModuleScript   game pass + developer product ids (paste yours, see §3)
    │  ├─ NamePool                      ModuleScript   names for the "Random" button
@@ -236,7 +278,7 @@ ReplicatedStorage
    ├─ Net                              ModuleScript   (src/shared/Net/init.luau)
    │  └─ RemoteDefinitions             ModuleScript   every remote + rate limits
    └─ Util                             Folder
-      ├─ Budget, Endings, Format, Futures, People,
+      ├─ Budget, Daily, Endings, Format, Futures, People,
       │  Signal, StatMath, Style, TableUtil                   ModuleScripts
 
 ServerScriptService
@@ -252,12 +294,14 @@ ServerScriptService
    │     │  Adult, MiddleAge, Retirement  ModuleScripts  one per life stage
    │     └─ LifeAndWork                ModuleScript   multi-stage career & relationship scenarios
    ├─ Lib                              Folder
-   │  ├─ Actions, CoinRewards, Conditions, Consequences, MockDataStore, RandomEvents,
-   │  │  Reveal, ScenarioPicker, SessionLock, Validate, Yearly   ModuleScripts
+   │  ├─ Actions, CoinRewards, Conditions, Consequences, MockDataStore, MockOrderedDataStore,
+   │  │  RandomEvents, Reveal, ScenarioPicker, SessionLock, Validate, Yearly   ModuleScripts
    ├─ Services                         Folder
-   │  ├─ CityEventService, CosmeticsService, DataService, LifeService, NPCService,
-   │  │  PartyService, PlotService, RevealService, SettingsService, ShopService,
-   │  │  StatService, StoreService, WorldService                  ModuleScripts
+   │  ├─ ChallengeService, CityEventService, CollectibleService, CosmeticsService,
+   │  │  DailyService, DataService, LeaderboardService, LifeService, NPCService,
+   │  │  PartyService, PlotService, ProfileService, ProgressService, RevealService,
+   │  │  SettingsService, ShopService, StatService, StoreService, TradeService,
+   │  │  WorldService                                              ModuleScripts
    └─ World                            Folder         builds Lifeville
       ├─ Builder                       ModuleScript   parts, buildings with doorways, furniture, trees, lamps, cars, prompts
       ├─ Homes                         ModuleScript   player houses on Oak Street
@@ -271,14 +315,17 @@ StarterPlayer
    └─ Client                           Folder
       ├─ Main                          LocalScript    (Main.client.luau)
       ├─ Controllers                   Folder
-      │  ├─ AmbienceController, AudioController, ControlsController, DataController,
-      │  │  DayNightController, DecisionController, DialogueController, DoorsController,
-      │  │  ExploreController, FinanceController, FriendsController, FutureController,
-      │  │  GatesController, GraphicsController, HUDController, InventoryController,
-      │  │  LifeHistoryController, LifestyleController, LoadingController, MapController,
-      │  │  MenuController, NotificationController, PartyController, PeopleController,
-      │  │  RevealController, SettingsController, SettingsMenu, ShopController,
-      │  │  ShowcaseController, StyleController, TrafficController, UIController   ModuleScripts
+      │  ├─ AchievementsController, AmbienceController, AudioController, CollectiblesController,
+      │  │  ControlsController, DailyController, DataController, DayNightController,
+      │  │  DecisionController, DialogueController, DoorsController, ExploreController,
+      │  │  FinanceController, FriendsController, FutureController, GatesController,
+      │  │  GraphicsController, HelpController, HUDController, InventoryController,
+      │  │  LeaderboardController, LifeHistoryController, LifestyleController,
+      │  │  LoadingController, MapController, MenuController, NotificationController,
+      │  │  PartyController, PeopleController, ProfileController, RevealController,
+      │  │  SettingsController, SettingsMenu, ShopController, ShowcaseController,
+      │  │  StyleController, TradeController, TrafficController, TutorialController,
+      │  │  UIController                                              ModuleScripts
       └─ UILib                         Folder
          ├─ Anim, Avatar, Components, Create, Layout, Theme            ModuleScripts
 ```
@@ -378,6 +425,12 @@ rojo build default.project.json -o build/ChooseYourLife.rbxlx
   - For Lifeville: `WorldMusic` (while exploring), one ambient loop per kind of district (`AmbientPlaza`, `AmbientSchool`, `AmbientPark`, `AmbientResidential`, `AmbientHospital`, `AmbientCity`, `AmbientHarbour`), `AmbientNight`, and `BuskerMusic` (heard near the busker in the Plaza).
   - `Splash` (the wishing fountain) already works: it uses a sound built into Roblox.
 - **Animations:** the townspeople use Roblox's default character animations (idle, walk, wave, point, dance), so there's nothing to add.
+- **Roblox badges (optional):** the game works without them.
+  1. Creator Dashboard → your experience → **Associated Items → Badges** → Create a Badge. Roblox limits how many free badges you can create per day.
+  2. Copy each badge's id into `ReplicatedStorage › Shared › Data › Badges`: `Welcome` (first time playing) and `ForAchievement` (one per achievement you choose; 12 are listed ready to fill in).
+  3. Players who already unlocked an achievement get its badge the next time they join.
+- **Leaderboards:** they need DataStores, so publish the place and turn on Studio API access (see TESTING.md). Without that, Studio uses a temporary board that resets when you press Stop.
+- **Support text:** edit `Config.Support` (shown in Help) to tell players how to reach you.
 - **Max players (optional):** Oak Street has 8 house plots. If you want every player to get a home, set Game Settings → Places → Max Players to 8 or fewer. Anyone beyond 8 can still do everything except the home actions.
 - **Credits:** edit `Config.Credits`.
 - **Robux products (optional):** the game works fully without them, using Coins earned by playing.
@@ -403,6 +456,6 @@ selene src
 Tests run the **real** `src/` files outside Roblox using [Lune](https://lune-org.github.io) and a fake Roblox API (`tests/harness.luau`). The client tests boot the real client against a real server harness, with remotes bridged and data deep-copied. They then click through the loading screen, menu, name entry, a whole life, the stats panel, settings, credits, save slots and delete confirmation, the shop (search, tabs, previews, buying, VIP, coin packs) and My Items. This runs at desktop, phone-portrait, phone-landscape (including rotating mid-decision) and gamepad layouts, and the tests fail on any script error.
 
 **What the harness can't check:** how things actually look, fonts, real tween timing, and real DataStore and text-filter behaviour. Please play-test in Studio. You should see:
-- Output shows `[Server] CHOOSE YOUR LIFE started with 13 services` and no red errors.
+- Output shows `[Server] CHOOSE YOUR LIFE started with 20 services` and no red errors.
 - The loading screen leads to the main menu. **Play** leads to name entry, then to decision cards.
 - Use Studio's **device emulator** (Test → Device) to check a phone and a tablet.
